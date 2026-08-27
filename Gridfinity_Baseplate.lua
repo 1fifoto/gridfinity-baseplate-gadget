@@ -98,6 +98,10 @@ function Core.grid_size_mm(columns, rows)
   return columns * Core.PITCH_MM, rows * Core.PITCH_MM
 end
 
+function Core.finish_floor_raster_required(allowance_mm)
+  return allowance_mm > 0.000001
+end
+
 function Core.validate_grid(columns, rows, origin_x, origin_y, job_min_x, job_min_y,
                             job_width, job_height, pitch_x, pitch_y)
   if columns < 1 or rows < 1 then
@@ -377,7 +381,7 @@ local function build_finish_paths(material, options, tool, unit)
     Core.tool_value_in_job_units(tool.Stepover, tool.InMM, material.InMM),
     2.0 * tool_radius), 0.05 * unit)
   local mid_depth = Core.MID_DEPTH_MM * unit
-  local wall_bottom = Core.LOWER_START_DEPTH_MM * unit
+  local wall_bottom = Core.TOTAL_DEPTH_MM * unit
   local depth = math.min(mid_depth + stepdown, wall_bottom)
 
   while depth <= wall_bottom + 0.0000001 do
@@ -399,16 +403,18 @@ local function build_finish_paths(material, options, tool, unit)
     depth = math.min(depth + stepdown, wall_bottom)
   end
 
-  local bottom_w, bottom_h, bottom_r = Core.machining_profile_dimensions_at_depth_mm(
-    Core.TOTAL_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
-  local floor_width, floor_height, floor_radius = Core.inset_profile(
-    bottom_w * unit, bottom_h * unit, bottom_r * unit, tool_radius)
-  floor_radius = math.max(0.000001 * unit, floor_radius)
-  local floor_z = material:CalcAbsoluteZ(-Core.TOTAL_DEPTH_MM * unit)
-  for row = 0, options.rows - 1 do
-    for col = 0, options.columns - 1 do
-      local cx, cy = cell_center(options, row, col, unit)
-      add_raster(group, cx, cy, floor_width, floor_height, floor_radius, floor_z, stepover)
+  if Core.finish_floor_raster_required(options.allowance_mm) then
+    local bottom_w, bottom_h, bottom_r = Core.machining_profile_dimensions_at_depth_mm(
+      Core.TOTAL_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
+    local floor_width, floor_height, floor_radius = Core.inset_profile(
+      bottom_w * unit, bottom_h * unit, bottom_r * unit, tool_radius)
+    floor_radius = math.max(0.000001 * unit, floor_radius)
+    local floor_z = material:CalcAbsoluteZ(-Core.TOTAL_DEPTH_MM * unit)
+    for row = 0, options.rows - 1 do
+      for col = 0, options.columns - 1 do
+        local cx, cy = cell_center(options, row, col, unit)
+        add_raster(group, cx, cy, floor_width, floor_height, floor_radius, floor_z, stepover)
+      end
     end
   end
 

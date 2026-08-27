@@ -31,6 +31,8 @@ near(mr, 1.6, 1e-9, "unchamfered machined bottom radius")
 
 near(core.to_job_units(25.4, false), 1.0, 1e-9, "mm to inch")
 near(core.tool_value_in_job_units(0.25, false, true), 6.35, 1e-9, "inch tool to mm job")
+assert(not core.finish_floor_raster_required(0.0), "zero allowance should use profile-only finishing")
+assert(core.finish_floor_raster_required(0.01), "positive allowance should retain the finish floor raster")
 
 local iw, ih, ir = core.inset_profile(35.8, 35.8, 0.9, 3.375)
 near(iw, 27.25, 1e-9, "conservative large-tool inset width")

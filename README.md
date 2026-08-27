@@ -8,7 +8,7 @@ sub-pockets are machined below the standard 4.65 mm socket floor.
 The gadget creates these toolpaths:
 
 1. `Gridfinity 1 - Rough` — stepped raster clearing with the selected roughing end mill.
-2. `Gridfinity 2 - Finish` — finishes the 1.8 mm vertical wall and the socket floor.
+2. `Gridfinity 2 - Finish` — profiles the vertical wall; with positive roughing allowance it also finishes the socket floor.
 3. `Gridfinity 3 - 45deg Chamfers` — cuts the 2.15 mm upper seating face with a V-bit.
 
 ## Gridfinity specification
@@ -42,6 +42,9 @@ just under the 1.6 mm floor-plan corner radius. Roughing paths use a conservativ
 inner region whenever the roughing cutter is larger than a profile corner,
 leaving that material for the finishing cutter rather than gouging the socket.
 The V-bit cuts only the upper chamfer and never enters the lower corner.
+When roughing allowance is zero, roughing clears to the terminal depth and the
+finishing toolpath contains only wall profiles down to 4.65 mm. A positive
+allowance retains the finishing raster across the socket floor.
 
 ## Install
 
