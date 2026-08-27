@@ -66,9 +66,9 @@ local function add_preview_geometry(job, options, unit)
     for col = 0, options.columns - 1 do
       local cx = options.origin_x + (col + 0.5) * options.cell_width_mm * unit
       local cy = options.origin_y + (row + 0.5) * options.cell_height_mm * unit
-      local top_w, top_h, top_r = Core.profile_dimensions_at_depth_mm(0.0, options.cell_width_mm, options.cell_height_mm)
-      local mid_w, mid_h, mid_r = Core.profile_dimensions_at_depth_mm(Core.MID_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
-      local bottom_w, bottom_h, bottom_r = Core.profile_dimensions_at_depth_mm(Core.TOTAL_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
+      local top_w, top_h, top_r = Core.machining_profile_dimensions_at_depth_mm(0.0, options.cell_width_mm, options.cell_height_mm)
+      local mid_w, mid_h, mid_r = Core.machining_profile_dimensions_at_depth_mm(Core.MID_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
+      local bottom_w, bottom_h, bottom_r = Core.machining_profile_dimensions_at_depth_mm(Core.TOTAL_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
       top_layer:AddObject(CreateCadContour(rounded_rect(
         cx, cy, top_w * unit, top_h * unit, top_r * unit, 0.0)), true)
       mid_layer:AddObject(CreateCadContour(rounded_rect(
@@ -164,7 +164,7 @@ local function build_rough_paths(material, options, tool, unit)
   local depth = math.min(stepdown, target)
 
   while depth <= target + 0.0000001 do
-    local width_mm, height_mm, profile_radius_mm = Core.profile_dimensions_at_depth_mm(
+    local width_mm, height_mm, profile_radius_mm = Core.machining_profile_dimensions_at_depth_mm(
       depth / unit, options.cell_width_mm, options.cell_height_mm)
     local offset = radius + allowance
     local width, height, rr = Core.inset_profile(
@@ -197,7 +197,7 @@ local function build_finish_paths(material, options, tool, unit)
   local depth = math.min(mid_depth + stepdown, wall_bottom)
 
   while depth <= wall_bottom + 0.0000001 do
-    local mid_w, mid_h, mid_r = Core.profile_dimensions_at_depth_mm(
+    local mid_w, mid_h, mid_r = Core.machining_profile_dimensions_at_depth_mm(
       Core.MID_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
     local width, height, rr = Core.inset_profile(
       mid_w * unit, mid_h * unit, mid_r * unit, tool_radius)
@@ -215,7 +215,7 @@ local function build_finish_paths(material, options, tool, unit)
     depth = math.min(depth + stepdown, wall_bottom)
   end
 
-  local bottom_w, bottom_h, bottom_r = Core.profile_dimensions_at_depth_mm(
+  local bottom_w, bottom_h, bottom_r = Core.machining_profile_dimensions_at_depth_mm(
     Core.TOTAL_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
   local floor_width, floor_height, floor_radius = Core.inset_profile(
     bottom_w * unit, bottom_h * unit, bottom_r * unit, tool_radius)
@@ -256,16 +256,12 @@ end
 local function build_vbit_paths(material, options, unit)
   local group = ContourGroup(true)
   local mid_z = material:CalcAbsoluteZ(-Core.MID_DEPTH_MM * unit)
-  local bottom_z = material:CalcAbsoluteZ(-Core.TOTAL_DEPTH_MM * unit)
   for row = 0, options.rows - 1 do
     for col = 0, options.columns - 1 do
       local cx, cy = cell_center(options, row, col, unit)
-      local mid_w, mid_h, mid_r = Core.profile_dimensions_at_depth_mm(
+      local mid_w, mid_h, mid_r = Core.machining_profile_dimensions_at_depth_mm(
         Core.MID_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
-      local bottom_w, bottom_h, bottom_r = Core.profile_dimensions_at_depth_mm(
-        Core.TOTAL_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
       group:AddTail(rounded_rect(cx, cy, mid_w * unit, mid_h * unit, mid_r * unit, mid_z))
-      group:AddTail(rounded_rect(cx, cy, bottom_w * unit, bottom_h * unit, bottom_r * unit, bottom_z))
       if options.include_magnets and options.magnet_chamfer_mm > 0.0 then
         local magnet_z = material:CalcAbsoluteZ(
           -(Core.TOTAL_DEPTH_MM + options.magnet_chamfer_mm) * unit)
@@ -442,7 +438,7 @@ function main(script_path)
   local finish_dia_mm = Core.tool_value_in_job_units(finish_tool.ToolDia, finish_tool.InMM, true)
   local vbit_dia_mm = Core.tool_value_in_job_units(vbit_tool.ToolDia, vbit_tool.InMM, true)
   local thickness_mm = material.InMM and material.Thickness or material.Thickness * 25.4
-  local bottom_w_mm, bottom_h_mm = Core.profile_dimensions_at_depth_mm(
+  local bottom_w_mm, bottom_h_mm = Core.machining_profile_dimensions_at_depth_mm(
     Core.TOTAL_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
   local tools_ok, tools_error = Core.validate_tool_geometry(
     rough_dia_mm, finish_dia_mm, vbit_dia_mm, vbit_tool.VBitAngle,

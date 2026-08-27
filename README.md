@@ -2,21 +2,21 @@
 
 Creates a configurable negative Gridfinity baseplate pocket in VCarve Pro or
 Aspire. The gadget draws the socket boundaries and creates exactly three
-toolpaths: roughing, finishing, and 45-degree chamfers. Optional magnet
+toolpaths: roughing, finishing, and 45-degree upper chamfers. Optional magnet
 sub-pockets are machined below the standard 4.65 mm socket floor.
 
 The gadget creates these toolpaths:
 
 1. `Gridfinity 1 - Rough` — stepped raster clearing with the selected roughing end mill.
 2. `Gridfinity 2 - Finish` — finishes the 1.8 mm vertical wall and the socket floor.
-3. `Gridfinity 3 - 45deg Chamfers` — cuts both 45° seating faces with a V-bit.
+3. `Gridfinity 3 - 45deg Chamfers` — cuts the 2.15 mm upper seating face with a V-bit.
 
 ## Gridfinity specification
 
-The default negative-pocket geometry uses a 42 mm pitch, 2.15 mm upper
+The referenced negative-pocket geometry uses a 42 mm pitch, 2.15 mm upper
 chamfer, 1.8 mm vertical wall, 0.7 mm lower chamfer, and 4.65 mm terminal depth.
-For a standard cell this produces 41.5 mm, 37.2 mm, and 35.8 mm pocket widths
-at the top, vertical section, and bottom respectively.
+For now, the gadget intentionally omits the 0.7 mm lower chamfer: the end mills
+continue the 37.2 mm vertical pocket directly to the 4.65 mm terminal depth.
 
 The pocket profile follows the
 [Gridfinity Design Reference](https://gridfinity.xyz/assets/img/spec_draft_willtree8.jpg).
@@ -36,21 +36,12 @@ The Vectric tool database supplies each tool's diameter, stepdown, stepover,
 feeds, speeds, and tool number. The gadget supports both metric and inch jobs.
 Tool units do not need to match the job units.
 
-For the standard profile, a 1/4-inch roughing end mill is suitable. A 1/8-inch
-finishing end mill is too large for the 0.9 mm bottom corner radius and is
-rejected. Use a finishing end mill no larger than 1.8 mm; a 1/16-inch end mill
-(1.5875 mm) fits the required geometry. Roughing paths use a conservative inner
-region whenever the roughing cutter is larger than a profile corner, leaving
-that material for the finishing cutter rather than gouging the socket.
-
-A conventional 1/2-inch 90° V-bit can cut the 2.15 mm upper chamfer, but it
-cannot reach the 0.7 mm lower chamfer without its widening cone gouging the
-1.8 mm vertical wall. A lower-chamfer V-cutter would have to be no larger than
-1.4 mm in diameter, which is too small for the upper chamfer. The gadget blocks
-toolpath creation when it detects this interference instead of producing an
-unsafe lower-chamfer path. The bottom-chamfer machining strategy must therefore
-be changed before the current three-toolpath design can produce a complete
-baseplate.
+For the simplified profile, a 1/4-inch roughing end mill, 1/8-inch finishing
+end mill, and 1/2-inch 90° V-bit are suitable. The 1/8-inch cutter radius is
+just under the 1.6 mm floor-plan corner radius. Roughing paths use a conservative
+inner region whenever the roughing cutter is larger than a profile corner,
+leaving that material for the finishing cutter rather than gouging the socket.
+The V-bit cuts only the upper chamfer and never enters the lower corner.
 
 ## Install
 
