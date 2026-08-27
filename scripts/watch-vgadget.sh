@@ -10,7 +10,6 @@ fingerprint() {
   cksum \
     "$project_dir/Gridfinity_Baseplate.lua" \
     "$project_dir/Gridfinity_Baseplate.htm" \
-    "$project_dir/gridfinity_core.lua" \
     "$project_dir/README.md" \
     "$project_dir/scripts/build-vgadget.sh" | cksum | awk '{print $1 ":" $2}'
 }

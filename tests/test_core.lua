@@ -1,4 +1,6 @@
-local core = dofile("gridfinity_core.lua")
+GRIDFINITY_TEST_MODE = true
+local core = dofile("Gridfinity_Baseplate.lua")
+GRIDFINITY_TEST_MODE = nil
 
 local function near(actual, expected, epsilon, label)
   if math.abs(actual - expected) > epsilon then
@@ -50,6 +52,9 @@ ok, vbit_error = core.validate_tool_geometry(6.35, 3.175, 12.7, 90, 0.2, 4.65, 6
 assert(ok, "one-eighth inch finish and one-half inch V-bit should fit simplified geometry")
 ok = core.validate_tool_geometry(6.35, 1.5875, 12.7, 45, 0.2, 4.65, 6)
 assert(not ok, "45 degree included-angle bit should fail")
+ok, vbit_error = core.validate_tool_geometry(6.35, 3.175, 12.7, nil, 0.2, 4.65, 6)
+assert(not ok, "missing V-bit angle should fail without a Lua error")
+assert(string.find(vbit_error, "valid included angle", 1, true), "missing-angle error should explain the problem")
 ok, vbit_error = core.validate_tool_geometry(6.35, 3.175, 1.4, 90, 0.2, 4.65, 6)
 assert(not ok, "small V-bit should fail the upper-chamfer requirement")
 assert(string.find(vbit_error, "at least 4.3 mm", 1, true), "small V-bit error should explain upper requirement")
@@ -65,4 +70,4 @@ assert(ok, "standard magnet parameters should validate")
 ok = core.validate_magnets(true, 6.2, 2.4, 0.25, 8, 0.4, 42, 42, 6.35, 4.65, 7.45)
 assert(not ok, "oversized magnet end mill should fail")
 
-print("gridfinity_core tests passed")
+print("Gridfinity Baseplate core tests passed")

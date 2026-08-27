@@ -26,7 +26,7 @@ jobs:
       - name: Test Lua sources
         run: |
           lua tests/test_core.lua
-          luac -p Gridfinity_Baseplate.lua gridfinity_core.lua tests/test_core.lua
+          luac -p Gridfinity_Baseplate.lua tests/test_core.lua
 
       - name: Build installable VGadget
         shell: bash

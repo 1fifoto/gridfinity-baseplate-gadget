@@ -16,13 +16,11 @@ fi
 
 test -f "$project_dir/Gridfinity_Baseplate.lua"
 test -f "$project_dir/Gridfinity_Baseplate.htm"
-test -f "$project_dir/gridfinity_core.lua"
 test -f "$project_dir/README.md"
 
 mkdir -p "$dist_dir" "$stage_dir/$gadget_name"
 cp "$project_dir/Gridfinity_Baseplate.lua" "$stage_dir/$gadget_name/"
 cp "$project_dir/Gridfinity_Baseplate.htm" "$stage_dir/$gadget_name/"
-cp "$project_dir/gridfinity_core.lua" "$stage_dir/$gadget_name/"
 cp "$project_dir/README.md" "$stage_dir/$gadget_name/"
 cp "$project_dir/LICENSE" "$stage_dir/$gadget_name/LICENSE.txt"
 

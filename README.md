@@ -95,7 +95,7 @@ Run the pure geometry tests and Lua syntax check:
 
 ```sh
 lua tests/test_core.lua
-luac -p Gridfinity_Baseplate.lua gridfinity_core.lua tests/test_core.lua
+luac -p Gridfinity_Baseplate.lua tests/test_core.lua
 ```
 
 External toolpaths are intentionally used because one toolpath must machine a
