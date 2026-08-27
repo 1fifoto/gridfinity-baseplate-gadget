@@ -23,19 +23,33 @@
   <h1>Gridfinity Baseplate</h1>
   <div class="hint">Creates a custom pocket definition and exactly three CNC toolpaths. All dimensions are millimeters.</div>
 
-  <h2>Grid and placement</h2>
+  <h2>Grid size</h2>
   <table>
     <tr><td class="label">Cells in X</td><td><input class="number" id="Columns" type="text"></td></tr>
     <tr><td class="label">Cells in Y</td><td><input class="number" id="Rows" type="text"></td></tr>
-    <tr><td class="label">Cell width (X)</td><td><input class="number" id="CellWidth" type="text"> mm</td></tr>
-    <tr><td class="label">Cell height (Y)</td><td><input class="number" id="CellHeight" type="text"> mm</td></tr>
-    <tr><td class="label">Generation location</td><td><select id="GenerationLocation"><option>Positive from Origin</option><option>Centered on Origin</option></select></td></tr>
+  </table>
+
+  <h2>Placement</h2>
+  <table>
+		<tr><td class="label">Generation location</td><td><select id="GenerationLocation"><option>Positive from Origin</option><option>Centered on Origin</option></select></td></tr>
     <tr><td class="label">X offset to origin</td><td><input class="number" id="OffsetX" type="text"> mm</td></tr>
     <tr><td class="label">Y offset to origin</td><td><input class="number" id="OffsetY" type="text"> mm</td></tr>
   </table>
 
-  <h2>Tools</h2>
+  <h2>Magnet sub-pockets</h2>
   <table>
+    <tr><td class="label">Include magnet pockets</td><td><input id="IncludeMagnets" type="checkbox"></td></tr>
+    <tr><td class="label">Hole diameter</td><td><input class="number" id="MagnetDiameter" type="text"> mm</td></tr>
+    <tr><td class="label">Depth below floor</td><td><input class="number" id="MagnetDepth" type="text"> mm</td></tr>
+    <tr><td class="label">Top-edge chamfer</td><td><input class="number" id="MagnetChamfer" type="text"> mm</td></tr>
+    <tr><td class="label">Center distance from cell edges</td><td><input class="number" id="MagnetInset" type="text"> mm</td></tr>
+    <tr><td class="label">Minimum retained base</td><td><input class="number" id="MagnetBase" type="text"> mm</td></tr>
+  </table>
+  <div class="hint">Four round pockets are placed in each cell. The finishing end mill clears them and the V-bit cuts their optional top chamfer.</div>
+
+  <h2>Machining tools</h2>
+  <table>
+    <tr><td class="label">Roughing allowance</td><td><input class="number" id="Allowance" type="text"> mm</td><td></td></tr>
     <tr>
       <td class="label">Roughing end mill</td>
       <td><input id="RoughToolButton" class="ToolPicker" type="button" value="Select..."></td>
@@ -51,25 +65,21 @@
       <td><input id="VBitToolButton" class="ToolPicker" type="button" value="Select..."></td>
       <td><span id="VBitToolName" class="tool-name"></span></td>
     </tr>
-    <tr><td class="label">Roughing allowance</td><td><input class="number" id="Allowance" type="text"> mm</td><td></td></tr>
   </table>
   <div class="hint">The required cutter has a 45&deg; cutting edge, represented in Vectric as a <b>90&deg; included-angle V-bit</b>. Tool database feeds, speeds, stepdown, and stepover are retained.</div>
-  <div class="hint">Inch tools are supported. The standard 0.9 mm bottom corner radius requires a finishing end mill no larger than 1.8 mm; a 1/16&quot; cutter works, while a 1/8&quot; cutter does not reproduce that corner.</div>
+  <div class="hint">Inch tools are supported. With the lower chamfer omitted, the machined floor has a 1.6 mm plan-view corner radius and a 1/8&quot; finishing end mill fits.</div>
 
-  <h2>Magnet sub-pockets</h2>
-  <table>
-    <tr><td class="label">Include magnet pockets</td><td><input id="IncludeMagnets" type="checkbox"></td></tr>
-    <tr><td class="label">Hole diameter</td><td><input class="number" id="MagnetDiameter" type="text"> mm</td></tr>
-    <tr><td class="label">Depth below floor</td><td><input class="number" id="MagnetDepth" type="text"> mm</td></tr>
-    <tr><td class="label">Top-edge chamfer</td><td><input class="number" id="MagnetChamfer" type="text"> mm</td></tr>
-    <tr><td class="label">Center distance from cell edges</td><td><input class="number" id="MagnetInset" type="text"> mm</td></tr>
-    <tr><td class="label">Minimum retained base</td><td><input class="number" id="MagnetBase" type="text"> mm</td></tr>
-  </table>
-  <div class="hint">Four round pockets are placed in each cell. The finishing end mill clears them and the V-bit cuts their optional top chamfer.</div>
+	<h2>Non-standard cell dimensions</h2>
+	<table>
+	  <tr><td class="label">Cell width (X)</td><td><input class="number" id="CellWidth" type="text"> mm</td></tr>
+	  <tr><td class="label">Cell height (Y)</td><td><input class="number" id="CellHeight" type="text"> mm</td></tr>
+	</table>
+	<div class="hint">Standard Gridfinity cells are 42 mm &times; 42 mm. Change these values only for a non-standard grid.</div>
 
   <div class="spec">
-    Negative pocket profile: 42 mm &times; 42 mm cell; 2.15 mm upper chamfer;
-    1.8 mm vertical wall; 0.7 mm lower chamfer; 4.65 mm terminal socket depth.
+    Machined pocket profile: 42 mm &times; 42 mm cell; 2.15 mm upper chamfer;
+    straight wall from 2.15 mm to the 4.65 mm terminal socket depth. The
+    referenced 0.7 mm lower chamfer is currently omitted.
     Magnet sub-pockets continue below this floor only when enabled.
   </div>
 
