@@ -1,0 +1,58 @@
+name: Build VCarve Gadget
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "**"
+    tags:
+      - "v*"
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Lua
+        run: sudo apt-get update && sudo apt-get install --yes lua5.4
+
+      - name: Test Lua sources
+        run: |
+          lua tests/test_core.lua
+          luac -p Gridfinity_Baseplate.lua gridfinity_core.lua tests/test_core.lua
+
+      - name: Build installable VGadget
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            version="${GITHUB_REF_NAME}"
+          else
+            version="dev-${GITHUB_SHA::7}"
+          fi
+          VERSION="$version" ./scripts/build-vgadget.sh
+
+      - name: Upload VGadget artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Gridfinity_Baseplate-${{ github.sha }}
+          path: dist/*.vgadget
+          if-no-files-found: error
+
+      - name: Publish tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            dist/*.vgadget \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes

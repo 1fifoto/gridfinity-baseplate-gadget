@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  <title>Gridfinity Baseplate</title>
+  <style type="text/css">
+    body { background: #f0f0f0; font-family: Arial, Helvetica, sans-serif; font-size: 12px; margin: 14px; }
+    h1 { font-size: 22px; margin: 0 0 4px 0; color: #2e2e30; }
+    h2 { font-size: 13px; margin: 14px 0 5px 0; border-bottom: 1px solid #aaa; padding-bottom: 3px; }
+    table { width: 100%; border-collapse: collapse; }
+    td { padding: 3px 5px; vertical-align: middle; }
+    td.label { width: 38%; }
+    input.number { width: 82px; }
+    input.ToolPicker { width: 82px; }
+    .tool-name { color: #444; }
+    .hint { color: #666; font-size: 11px; line-height: 1.35; }
+    .spec { background: #e4f2ea; border: 1px solid #9bbda9; padding: 7px; margin-top: 8px; }
+    .buttons td { padding-top: 14px; }
+    .buttons input { font-weight: bold; width: 120px; }
+  </style>
+</head>
+<body>
+  <h1>Gridfinity Baseplate</h1>
+  <div class="hint">Creates a custom pocket definition and exactly three CNC toolpaths. All dimensions are millimeters.</div>
+
+  <h2>Grid and placement</h2>
+  <table>
+    <tr><td class="label">Cells in X</td><td><input class="number" id="Columns" type="text"></td></tr>
+    <tr><td class="label">Cells in Y</td><td><input class="number" id="Rows" type="text"></td></tr>
+    <tr><td class="label">Cell width (X)</td><td><input class="number" id="CellWidth" type="text"> mm</td></tr>
+    <tr><td class="label">Cell height (Y)</td><td><input class="number" id="CellHeight" type="text"> mm</td></tr>
+    <tr><td class="label">Generation location</td><td><select id="GenerationLocation"><option>Positive from Origin</option><option>Centered on Origin</option></select></td></tr>
+    <tr><td class="label">X offset from origin</td><td><input class="number" id="OffsetX" type="text"> mm</td></tr>
+    <tr><td class="label">Y offset from origin</td><td><input class="number" id="OffsetY" type="text"> mm</td></tr>
+  </table>
+
+  <h2>Tools</h2>
+  <table>
+    <tr>
+      <td class="label">Roughing end mill</td>
+      <td><input id="RoughToolButton" class="ToolPicker" type="button" value="Select..."></td>
+      <td><span id="RoughToolName" class="tool-name"></span></td>
+    </tr>
+    <tr>
+      <td class="label">Finishing end mill</td>
+      <td><input id="FinishToolButton" class="ToolPicker" type="button" value="Select..."></td>
+      <td><span id="FinishToolName" class="tool-name"></span></td>
+    </tr>
+    <tr>
+      <td class="label">45&deg; chamfer V-bit</td>
+      <td><input id="VBitToolButton" class="ToolPicker" type="button" value="Select..."></td>
+      <td><span id="VBitToolName" class="tool-name"></span></td>
+    </tr>
+    <tr><td class="label">Roughing allowance</td><td><input class="number" id="Allowance" type="text"> mm</td><td></td></tr>
+  </table>
+  <div class="hint">The required cutter has a 45&deg; cutting edge, represented in Vectric as a <b>90&deg; included-angle V-bit</b>. Tool database feeds, speeds, stepdown, and stepover are retained.</div>
+  <div class="hint">Inch tools are supported. The standard 0.9 mm bottom corner radius requires a finishing end mill no larger than 1.8 mm; a 1/16&quot; cutter works, while a 1/8&quot; cutter does not reproduce that corner.</div>
+
+  <h2>Magnet sub-pockets</h2>
+  <table>
+    <tr><td class="label">Include magnet pockets</td><td><input id="IncludeMagnets" type="checkbox"></td></tr>
+    <tr><td class="label">Hole diameter</td><td><input class="number" id="MagnetDiameter" type="text"> mm</td></tr>
+    <tr><td class="label">Depth below socket floor</td><td><input class="number" id="MagnetDepth" type="text"> mm</td></tr>
+    <tr><td class="label">Top-edge chamfer</td><td><input class="number" id="MagnetChamfer" type="text"> mm</td></tr>
+    <tr><td class="label">Center distance from cell edges</td><td><input class="number" id="MagnetInset" type="text"> mm</td></tr>
+    <tr><td class="label">Minimum retained base</td><td><input class="number" id="MagnetBase" type="text"> mm</td></tr>
+  </table>
+  <div class="hint">Four round pockets are placed in each cell. The finishing end mill clears them and the V-bit cuts their optional top chamfer.</div>
+
+  <div class="spec">
+    Negative pocket profile: 42 mm &times; 42 mm cell; 2.15 mm upper chamfer;
+    1.8 mm vertical wall; 0.7 mm lower chamfer; 4.65 mm terminal socket depth.
+    Magnet sub-pockets continue below this floor only when enabled.
+  </div>
+
+  <table class="buttons">
+    <tr>
+      <td align="right"><input id="ButtonOK" type="button" value="Create Baseplate"></td>
+      <td align="left"><input id="ButtonCancel" type="button" value="Cancel"></td>
+    </tr>
+  </table>
+</body>
+</html>
