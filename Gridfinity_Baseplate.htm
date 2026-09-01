@@ -50,6 +50,7 @@
   <h2>Machining tools</h2>
   <table>
     <tr><td class="label">Roughing allowance</td><td><input class="number" id="Allowance" type="text"> mm</td><td></td></tr>
+    <tr><td colspan="3"><div class="hint">If the roughing allowance is greater than zero, the finish pass includes a pocket toolpath and a profile toolpath. If the roughing allowance is zero, the finish pass includes only a profile toolpath.</div></td></tr>
     <tr>
       <td class="label">Roughing end mill</td>
       <td><input id="RoughToolButton" class="ToolPicker" type="button" value="Select..."></td>
@@ -65,10 +66,9 @@
       <td><input id="VBitToolButton" class="ToolPicker" type="button" value="Select..."></td>
       <td><span id="VBitToolName" class="tool-name"></span></td>
     </tr>
+    <tr><td colspan="3"><div class="hint">The required cutter has a 45&deg; cutting edge, represented in Vectric as a <b>90&deg; included-angle V-bit</b>. Tool database feeds, speeds, stepdown, and stepover are retained.</div></td></tr>
+    <tr><td colspan="3"><div class="hint">Inch tools are supported. With the lower chamfer omitted, the machined floor has a 1.6 mm plan-view corner radius and a 1/8&quot; finishing end mill fits.</div></td></tr>
   </table>
-  <div class="hint">The required cutter has a 45&deg; cutting edge, represented in Vectric as a <b>90&deg; included-angle V-bit</b>. Tool database feeds, speeds, stepdown, and stepover are retained.</div>
-  <div class="hint">With zero roughing allowance, finishing profiles only the vertical walls. A positive allowance also produces a finishing raster across the floor.</div>
-  <div class="hint">Inch tools are supported. With the lower chamfer omitted, the machined floor has a 1.6 mm plan-view corner radius and a 1/8&quot; finishing end mill fits.</div>
 
 	<h2>Non-standard cell dimensions</h2>
 	<table>

@@ -380,27 +380,20 @@ local function build_finish_paths(material, options, tool, unit)
   local stepover = math.max(math.min(
     Core.tool_value_in_job_units(tool.Stepover, tool.InMM, material.InMM),
     2.0 * tool_radius), 0.05 * unit)
-  local mid_depth = Core.MID_DEPTH_MM * unit
   local wall_bottom = Core.TOTAL_DEPTH_MM * unit
-  local depth = math.min(mid_depth + stepdown, wall_bottom)
-
-  while depth <= wall_bottom + 0.0000001 do
-    local mid_w, mid_h, mid_r = Core.machining_profile_dimensions_at_depth_mm(
-      Core.MID_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
-    local width, height, rr = Core.inset_profile(
-      mid_w * unit, mid_h * unit, mid_r * unit, tool_radius)
-    rr = math.max(0.000001 * unit, rr)
-    local z = material:CalcAbsoluteZ(-depth)
-    for row = 0, options.rows - 1 do
-      for col = 0, options.columns - 1 do
-        local cx, cy = cell_center(options, row, col, unit)
-        group:AddTail(rounded_rect(cx, cy, width, height, rr, z))
-      end
+  local mid_w, mid_h, mid_r = Core.machining_profile_dimensions_at_depth_mm(
+    Core.MID_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
+  local width, height, rr = Core.inset_profile(
+    mid_w * unit, mid_h * unit, mid_r * unit, tool_radius)
+  rr = math.max(0.000001 * unit, rr)
+  -- Roughing has already cleared the socket, so one profile at terminal depth
+  -- finishes the entire vertical wall without a redundant intermediate pass.
+  local z = material:CalcAbsoluteZ(-wall_bottom)
+  for row = 0, options.rows - 1 do
+    for col = 0, options.columns - 1 do
+      local cx, cy = cell_center(options, row, col, unit)
+      group:AddTail(rounded_rect(cx, cy, width, height, rr, z))
     end
-    if depth >= wall_bottom then
-      break
-    end
-    depth = math.min(depth + stepdown, wall_bottom)
   end
 
   if Core.finish_floor_raster_required(options.allowance_mm) then
@@ -495,7 +488,7 @@ local function load_options(material)
     generation_location = registry:GetString("GenerationLocation", "Positive from Origin"),
     offset_x_mm = registry:GetDouble("OffsetXMM", 0.0),
     offset_y_mm = registry:GetDouble("OffsetYMM", 0.0),
-    allowance_mm = registry:GetDouble("AllowanceMM", 0.2),
+    allowance_mm = registry:GetDouble("AllowanceMM", 0.0),
     include_magnets = registry:GetBool("IncludeMagnets", false),
     magnet_diameter_mm = registry:GetDouble("MagnetDiameterMM", 6.2),
     magnet_depth_mm = registry:GetDouble("MagnetDepthMM", 2.4),
