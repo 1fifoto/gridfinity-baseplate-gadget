@@ -8,7 +8,7 @@ if not GRIDFINITY_TEST_MODE then
 end
 
 local TITLE = "Gridfinity Baseplate"
-local VERSION = "1.0.0"
+local VERSION = "1.0.1"
 local REGISTRY_SECTION = "GridfinityBaseplateGadget"
 local LAYER_TOP = "Gridfinity - Top Opening"
 local LAYER_MID = "Gridfinity - Vertical Wall"
