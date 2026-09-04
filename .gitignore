@@ -4,6 +4,9 @@ luac.out
 # Generated VCarve gadget packages and watcher state
 /dist/
 
+# Local-only working files
+/.local/
+
 # luarocks build files
 *.src.rock
 *.zip
