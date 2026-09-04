@@ -1,6 +1,7 @@
 -- VECTRIC LUA SCRIPT
 -- Gridfinity Baseplate Gadget
--- Generates three external toolpaths: rough, finish, and 45 degree chamfers.
+-- Generates editable Vectric pocket and profile toolpaths from layer-associated
+-- socket and magnet geometry.
 
 local GRIDFINITY_TEST_MODE = rawget(_G, "GRIDFINITY_TEST_MODE") == true
 if not GRIDFINITY_TEST_MODE then
@@ -8,12 +9,18 @@ if not GRIDFINITY_TEST_MODE then
 end
 
 local TITLE = "Gridfinity Baseplate"
-local VERSION = "1.0.1"
+local VERSION = "1.1.0"
 local REGISTRY_SECTION = "GridfinityBaseplateGadget"
-local LAYER_TOP = "Gridfinity - Top Opening"
-local LAYER_MID = "Gridfinity - Vertical Wall"
-local LAYER_BOTTOM = "Gridfinity - Bottom Opening"
-local LAYER_MAGNETS = "Gridfinity - Magnet Pockets"
+local LAYER_SOCKET_OUTER = "Gridfinity - Socket Outer Edge"
+local LAYER_SOCKET_INNER = "Gridfinity - Socket Inner Edge"
+local LAYER_MAGNET_OUTER = "Gridfinity - Magnet Outer Edge"
+local LAYER_MAGNET_INNER = "Gridfinity - Magnet Inner Edge"
+local LEGACY_LAYERS = {
+  "Gridfinity - Top Opening",
+  "Gridfinity - Vertical Wall",
+  "Gridfinity - Bottom Opening",
+  "Gridfinity - Magnet Pockets"
+}
 local BULGE_90 = 0.4142135623730951
 
 -- Geometry and validation live in this script so VCarve discovers only one
@@ -98,8 +105,12 @@ function Core.grid_size_mm(columns, rows)
   return columns * Core.PITCH_MM, rows * Core.PITCH_MM
 end
 
-function Core.finish_floor_raster_required(allowance_mm)
+function Core.finish_uses_pocket(allowance_mm)
   return allowance_mm > 0.000001
+end
+
+function Core.magnet_outer_diameter_mm(hole_diameter_mm, chamfer_mm)
+  return hole_diameter_mm + 2.0 * chamfer_mm
 end
 
 function Core.validate_grid(columns, rows, origin_x, origin_y, job_min_x, job_min_y,
@@ -235,102 +246,6 @@ local function rounded_rect(cx, cy, width, height, radius, z)
   return c
 end
 
-local function add_preview_geometry(job, options, unit)
-  local manager = job.LayerManager
-  local top_layer = manager:GetLayerWithName(LAYER_TOP)
-  local mid_layer = manager:GetLayerWithName(LAYER_MID)
-  local bottom_layer = manager:GetLayerWithName(LAYER_BOTTOM)
-  local magnet_layer = manager:GetLayerWithName(LAYER_MAGNETS)
-  clear_layer(top_layer)
-  clear_layer(mid_layer)
-  clear_layer(bottom_layer)
-  clear_layer(magnet_layer)
-  top_layer:SetColour(0.10, 0.55, 0.30)
-  mid_layer:SetColour(0.15, 0.35, 0.80)
-  bottom_layer:SetColour(0.80, 0.30, 0.15)
-  magnet_layer:SetColour(0.55, 0.15, 0.65)
-
-  for row = 0, options.rows - 1 do
-    for col = 0, options.columns - 1 do
-      local cx = options.origin_x + (col + 0.5) * options.cell_width_mm * unit
-      local cy = options.origin_y + (row + 0.5) * options.cell_height_mm * unit
-      local top_w, top_h, top_r = Core.machining_profile_dimensions_at_depth_mm(0.0, options.cell_width_mm, options.cell_height_mm)
-      local mid_w, mid_h, mid_r = Core.machining_profile_dimensions_at_depth_mm(Core.MID_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
-      local bottom_w, bottom_h, bottom_r = Core.machining_profile_dimensions_at_depth_mm(Core.TOTAL_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
-      top_layer:AddObject(CreateCadContour(rounded_rect(
-        cx, cy, top_w * unit, top_h * unit, top_r * unit, 0.0)), true)
-      mid_layer:AddObject(CreateCadContour(rounded_rect(
-        cx, cy, mid_w * unit, mid_h * unit, mid_r * unit, 0.0)), true)
-      bottom_layer:AddObject(CreateCadContour(rounded_rect(
-        cx, cy, bottom_w * unit, bottom_h * unit, bottom_r * unit, 0.0)), true)
-      if options.include_magnets then
-        local points = {
-          {cx - options.cell_width_mm * unit * 0.5 + options.magnet_inset_mm * unit,
-           cy - options.cell_height_mm * unit * 0.5 + options.magnet_inset_mm * unit},
-          {cx + options.cell_width_mm * unit * 0.5 - options.magnet_inset_mm * unit,
-           cy - options.cell_height_mm * unit * 0.5 + options.magnet_inset_mm * unit},
-          {cx + options.cell_width_mm * unit * 0.5 - options.magnet_inset_mm * unit,
-           cy + options.cell_height_mm * unit * 0.5 - options.magnet_inset_mm * unit},
-          {cx - options.cell_width_mm * unit * 0.5 + options.magnet_inset_mm * unit,
-           cy + options.cell_height_mm * unit * 0.5 - options.magnet_inset_mm * unit}
-        }
-        for _, point in ipairs(points) do
-          local diameter = options.magnet_diameter_mm * unit
-          magnet_layer:AddObject(CreateCadContour(rounded_rect(
-            point[1], point[2], diameter, diameter, diameter * 0.5, 0.0)), true)
-        end
-      end
-    end
-  end
-end
-
-local function x_extent_at_y(half_w, half_h, radius, y)
-  if radius <= 0.000001 then
-    return half_w
-  end
-  local straight_half_h = half_h - radius
-  local ay = math.abs(y)
-  if ay <= straight_half_h then
-    return half_w
-  end
-  local dy = ay - straight_half_h
-  local inside = math.max(0.0, radius * radius - dy * dy)
-  return half_w - radius + math.sqrt(inside)
-end
-
-local function add_raster(group, cx, cy, width, height, radius, z, stepover)
-  if width <= 0.0 or height <= 0.0 then
-    return
-  end
-  local half_w = width * 0.5
-  local half_h = height * 0.5
-  local rows = math.max(1, math.ceil(height / math.max(stepover, height / 10000.0)))
-  local spacing = height / rows
-  local contour = Contour(0.0)
-  for i = 0, rows do
-    local y = -half_h + i * spacing
-    local extent = x_extent_at_y(half_w, half_h, radius, y)
-    local x1 = cx - extent
-    local x2 = cx + extent
-    if i % 2 == 1 then
-      x1, x2 = x2, x1
-    end
-    if i == 0 then
-      contour:AppendPoint(x1, cy + y, z)
-    else
-      contour:LineTo(x1, cy + y, z)
-    end
-    contour:LineTo(x2, cy + y, z)
-  end
-  group:AddTail(contour)
-  group:AddTail(rounded_rect(cx, cy, width, height, radius, z))
-end
-
-local function cell_center(options, row, col, unit)
-  return options.origin_x + (col + 0.5) * options.cell_width_mm * unit,
-         options.origin_y + (row + 0.5) * options.cell_height_mm * unit
-end
-
 local function magnet_centers(options, cx, cy, unit)
   local dx = options.cell_width_mm * unit * 0.5 - options.magnet_inset_mm * unit
   local dy = options.cell_height_mm * unit * 0.5 - options.magnet_inset_mm * unit
@@ -340,141 +255,119 @@ local function magnet_centers(options, cx, cy, unit)
   }
 end
 
-local function build_rough_paths(material, options, tool, unit)
-  local group = ContourGroup(true)
-  local radius = Core.tool_value_in_job_units(tool.ToolDia * 0.5, tool.InMM, material.InMM)
-  local stepdown = Core.tool_value_in_job_units(tool.Stepdown, tool.InMM, material.InMM)
-  local stepover = Core.tool_value_in_job_units(tool.Stepover, tool.InMM, material.InMM)
-  local allowance = options.allowance_mm * unit
-  stepdown = math.max(stepdown, 0.05 * unit)
-  stepover = math.max(math.min(stepover, 2.0 * radius), 0.05 * unit)
-  local target = (Core.TOTAL_DEPTH_MM - options.allowance_mm) * unit
-  local depth = math.min(stepdown, target)
-
-  while depth <= target + 0.0000001 do
-    local width_mm, height_mm, profile_radius_mm = Core.machining_profile_dimensions_at_depth_mm(
-      depth / unit, options.cell_width_mm, options.cell_height_mm)
-    local offset = radius + allowance
-    local width, height, rr = Core.inset_profile(
-      width_mm * unit, height_mm * unit, profile_radius_mm * unit, offset)
-    rr = math.max(0.000001 * unit, rr)
-    local z = material:CalcAbsoluteZ(-depth)
-    for row = 0, options.rows - 1 do
-      for col = 0, options.columns - 1 do
-        local cx, cy = cell_center(options, row, col, unit)
-        add_raster(group, cx, cy, width, height, rr, z, stepover)
-      end
+local function add_geometry(job, options, unit)
+  local manager = job.LayerManager
+  local socket_outer_layer = manager:GetLayerWithName(LAYER_SOCKET_OUTER)
+  local socket_inner_layer = manager:GetLayerWithName(LAYER_SOCKET_INNER)
+  local magnet_outer_layer = manager:GetLayerWithName(LAYER_MAGNET_OUTER)
+  local magnet_inner_layer = manager:GetLayerWithName(LAYER_MAGNET_INNER)
+  clear_layer(socket_outer_layer)
+  clear_layer(socket_inner_layer)
+  clear_layer(magnet_outer_layer)
+  clear_layer(magnet_inner_layer)
+  for _, layer_name in ipairs(LEGACY_LAYERS) do
+    local legacy_layer = manager:FindLayerWithName(layer_name)
+    if legacy_layer ~= nil then
+      clear_layer(legacy_layer)
     end
-    if depth >= target then
-      break
-    end
-    depth = math.min(depth + stepdown, target)
   end
-  return group
-end
+  socket_outer_layer:SetColour(0.10, 0.55, 0.30)
+  socket_inner_layer:SetColour(0.15, 0.35, 0.80)
+  magnet_outer_layer:SetColour(0.85, 0.45, 0.10)
+  magnet_inner_layer:SetColour(0.55, 0.15, 0.65)
 
-local function build_finish_paths(material, options, tool, unit)
-  local group = ContourGroup(true)
-  local tool_radius = Core.tool_value_in_job_units(tool.ToolDia * 0.5, tool.InMM, material.InMM)
-  local stepdown = math.max(Core.tool_value_in_job_units(tool.Stepdown, tool.InMM, material.InMM), 0.05 * unit)
-  local stepover = math.max(math.min(
-    Core.tool_value_in_job_units(tool.Stepover, tool.InMM, material.InMM),
-    2.0 * tool_radius), 0.05 * unit)
-  local wall_bottom = Core.TOTAL_DEPTH_MM * unit
-  local mid_w, mid_h, mid_r = Core.machining_profile_dimensions_at_depth_mm(
-    Core.MID_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
-  local width, height, rr = Core.inset_profile(
-    mid_w * unit, mid_h * unit, mid_r * unit, tool_radius)
-  rr = math.max(0.000001 * unit, rr)
-  -- Roughing has already cleared the socket, so one profile at terminal depth
-  -- finishes the entire vertical wall without a redundant intermediate pass.
-  local z = material:CalcAbsoluteZ(-wall_bottom)
   for row = 0, options.rows - 1 do
     for col = 0, options.columns - 1 do
-      local cx, cy = cell_center(options, row, col, unit)
-      group:AddTail(rounded_rect(cx, cy, width, height, rr, z))
-    end
-  end
-
-  if Core.finish_floor_raster_required(options.allowance_mm) then
-    local bottom_w, bottom_h, bottom_r = Core.machining_profile_dimensions_at_depth_mm(
-      Core.TOTAL_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
-    local floor_width, floor_height, floor_radius = Core.inset_profile(
-      bottom_w * unit, bottom_h * unit, bottom_r * unit, tool_radius)
-    floor_radius = math.max(0.000001 * unit, floor_radius)
-    local floor_z = material:CalcAbsoluteZ(-Core.TOTAL_DEPTH_MM * unit)
-    for row = 0, options.rows - 1 do
-      for col = 0, options.columns - 1 do
-        local cx, cy = cell_center(options, row, col, unit)
-        add_raster(group, cx, cy, floor_width, floor_height, floor_radius, floor_z, stepover)
-      end
-    end
-  end
-
-  if options.include_magnets then
-    local hole_center_diameter = options.magnet_diameter_mm * unit - 2.0 * tool_radius
-    local hole_center_radius = hole_center_diameter * 0.5
-    local magnet_target = (Core.TOTAL_DEPTH_MM + options.magnet_depth_mm) * unit
-    local magnet_depth = math.min(Core.TOTAL_DEPTH_MM * unit + stepdown, magnet_target)
-    while magnet_depth <= magnet_target + 0.0000001 do
-      local z = material:CalcAbsoluteZ(-magnet_depth)
-      for row = 0, options.rows - 1 do
-        for col = 0, options.columns - 1 do
-          local cx, cy = cell_center(options, row, col, unit)
-          for _, point in ipairs(magnet_centers(options, cx, cy, unit)) do
-            add_raster(group, point[1], point[2], hole_center_diameter,
-              hole_center_diameter, hole_center_radius, z, stepover)
-          end
-        end
-      end
-      if magnet_depth >= magnet_target then
-        break
-      end
-      magnet_depth = math.min(magnet_depth + stepdown, magnet_target)
-    end
-  end
-  return group
-end
-
-local function build_vbit_paths(material, options, unit)
-  local group = ContourGroup(true)
-  local mid_z = material:CalcAbsoluteZ(-Core.MID_DEPTH_MM * unit)
-  for row = 0, options.rows - 1 do
-    for col = 0, options.columns - 1 do
-      local cx, cy = cell_center(options, row, col, unit)
-      local mid_w, mid_h, mid_r = Core.machining_profile_dimensions_at_depth_mm(
-        Core.MID_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
-      group:AddTail(rounded_rect(cx, cy, mid_w * unit, mid_h * unit, mid_r * unit, mid_z))
-      if options.include_magnets and options.magnet_chamfer_mm > 0.0 then
-        local magnet_z = material:CalcAbsoluteZ(
-          -(Core.TOTAL_DEPTH_MM + options.magnet_chamfer_mm) * unit)
-        local diameter = options.magnet_diameter_mm * unit
+      local cx = options.origin_x + (col + 0.5) * options.cell_width_mm * unit
+      local cy = options.origin_y + (row + 0.5) * options.cell_height_mm * unit
+      local top_w, top_h, top_r = Core.machining_profile_dimensions_at_depth_mm(0.0, options.cell_width_mm, options.cell_height_mm)
+      local mid_w, mid_h, mid_r = Core.machining_profile_dimensions_at_depth_mm(Core.MID_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
+      socket_outer_layer:AddObject(CreateCadContour(rounded_rect(
+        cx, cy, top_w * unit, top_h * unit, top_r * unit, 0.0)), true)
+      socket_inner_layer:AddObject(CreateCadContour(rounded_rect(
+        cx, cy, mid_w * unit, mid_h * unit, mid_r * unit, 0.0)), true)
+      if options.include_magnets then
+        local inner_diameter = options.magnet_diameter_mm * unit
+        local outer_diameter = Core.magnet_outer_diameter_mm(
+          options.magnet_diameter_mm, options.magnet_chamfer_mm) * unit
         for _, point in ipairs(magnet_centers(options, cx, cy, unit)) do
-          group:AddTail(rounded_rect(point[1], point[2], diameter, diameter,
-            diameter * 0.5, magnet_z))
+          magnet_outer_layer:AddObject(CreateCadContour(rounded_rect(
+            point[1], point[2], outer_diameter, outer_diameter,
+            outer_diameter * 0.5, 0.0)), true)
+          magnet_inner_layer:AddObject(CreateCadContour(rounded_rect(
+            point[1], point[2], inner_diameter, inner_diameter,
+            inner_diameter * 0.5, 0.0)), true)
         end
       end
     end
   end
-  return group
 end
 
-local function create_external_toolpath(name, tool, paths, material)
+local function create_position_data(material, unit)
   local box = material.MaterialBox
   local gap = math.max(Core.to_job_units(2.0, material.InMM), material.Thickness * 0.1)
   local pos_data = ToolpathPosData()
   pos_data:SetHomePosition(box.BLC.x, box.BLC.y, box.TRC.z + gap)
   pos_data.SafeZGap = gap
   pos_data.StartZGap = math.min(gap, Core.to_job_units(1.0, material.InMM))
+  return pos_data
+end
 
-  local external_options = ExternalToolpathOptions()
-  external_options.StartDepth = 0.0
-  external_options.CreatePreview = true
-  local toolpath = ExternalToolpath(name, tool, pos_data, external_options, paths)
-  if toolpath:Error() then
-    return false
-  end
-  return ToolpathManager():AddExternalToolpath(toolpath)
+local function create_layer_selector(layer_name)
+  local selector = GeometrySelector()
+  selector.OnlyOnLayers = true
+  selector.SelectClosed = true
+  selector.SelectOpen = false
+  selector.AllowOpen = false
+  selector:AddLayerName(layer_name)
+  return selector
+end
+
+local function create_pocket_toolpath(name, tool, material, unit, layer_name,
+                                      start_depth_mm, cut_depth_mm, allowance_mm)
+  local pocket_data = PocketParameterData()
+  pocket_data.StartDepth = start_depth_mm * unit
+  pocket_data.CutDepth = cut_depth_mm * unit
+  pocket_data.CutDirection = ProfileParameterData.CLIMB_DIRECTION
+  pocket_data.Allowance = allowance_mm * unit
+  pocket_data.DoRasterClearance = true
+  pocket_data.RasterAngle = 0.0
+  pocket_data.ProfilePassType = PocketParameterData.PROFILE_LAST
+  pocket_data.DoRamping = false
+  pocket_data.RampDistance = 10.0 * unit
+  pocket_data.ProjectToolpath = false
+
+  local toolpath_id = ToolpathManager():CreatePocketingToolpath(
+    name, tool, nil, pocket_data, create_position_data(material, unit),
+    create_layer_selector(layer_name), true, true)
+  return toolpath_id ~= nil
+end
+
+local function create_profile_toolpath(name, tool, material, unit, layer_name,
+                                       start_depth_mm, cut_depth_mm, profile_side)
+  local profile_data = ProfileParameterData()
+  profile_data.StartDepth = start_depth_mm * unit
+  profile_data.CutDepth = cut_depth_mm * unit
+  profile_data.CutDirection = ProfileParameterData.CLIMB_DIRECTION
+  profile_data.ProfileSide = profile_side
+  profile_data.Allowance = 0.0
+  profile_data.KeepStartPoints = false
+  profile_data.CreateSquareCorners = false
+  profile_data.CornerSharpen = false
+  profile_data.UseTabs = false
+  profile_data.ProjectToolpath = false
+
+  local ramping_data = RampingData()
+  ramping_data.DoRamping = false
+  local lead_data = LeadInOutData()
+  lead_data.DoLeadIn = false
+  lead_data.DoLeadOut = false
+
+  local toolpath_id = ToolpathManager():CreateProfilingToolpath(
+    name, tool, profile_data, ramping_data, lead_data,
+    create_position_data(material, unit), create_layer_selector(layer_name),
+    true, true)
+  return toolpath_id ~= nil
 end
 
 local function load_options(material)
@@ -646,27 +539,62 @@ function main(script_path)
   end
 
   save_options(options, rough_tool, finish_tool, vbit_tool)
-  add_preview_geometry(job, options, unit)
-  local rough_paths = build_rough_paths(material, options, rough_tool, unit)
-  local finish_paths = build_finish_paths(material, options, finish_tool, unit)
-  local vbit_paths = build_vbit_paths(material, options, unit)
+  add_geometry(job, options, unit)
 
-  if not create_external_toolpath("Gridfinity 1 - Rough", rough_tool, rough_paths, material) then
+  if not create_pocket_toolpath(
+      "Gridfinity 1 - Rough", rough_tool, material, unit,
+      LAYER_SOCKET_INNER, 0.0, Core.TOTAL_DEPTH_MM - options.allowance_mm,
+      options.allowance_mm) then
     DisplayMessageBox("Could not create the Gridfinity roughing toolpath.")
     return false
   end
-  if not create_external_toolpath("Gridfinity 2 - Finish", finish_tool, finish_paths, material) then
+
+  local finish_ok
+  if Core.finish_uses_pocket(options.allowance_mm) then
+    finish_ok = create_pocket_toolpath(
+      "Gridfinity 2 - Finish", finish_tool, material, unit,
+      LAYER_SOCKET_INNER, 0.0, Core.TOTAL_DEPTH_MM, 0.0)
+  else
+    finish_ok = create_profile_toolpath(
+      "Gridfinity 2 - Finish", finish_tool, material, unit,
+      LAYER_SOCKET_INNER, Core.MID_DEPTH_MM,
+      Core.TOTAL_DEPTH_MM - Core.MID_DEPTH_MM,
+      ProfileParameterData.PROFILE_INSIDE)
+  end
+  if not finish_ok then
     DisplayMessageBox("The roughing path was created, but the finishing path failed.")
     return false
   end
-  if not create_external_toolpath("Gridfinity 3 - 45deg Chamfers", vbit_tool, vbit_paths, material) then
+
+  if options.include_magnets and not create_pocket_toolpath(
+      "Gridfinity 3 - Magnet Pockets", finish_tool, material, unit,
+      LAYER_MAGNET_INNER, Core.TOTAL_DEPTH_MM, options.magnet_depth_mm, 0.0) then
+    DisplayMessageBox("The socket paths were created, but the magnet-pocket path failed.")
+    return false
+  end
+
+  local chamfer_number = options.include_magnets and 4 or 3
+  if not create_profile_toolpath(
+      "Gridfinity " .. chamfer_number .. " - 45deg Socket Chamfers",
+      vbit_tool, material, unit, LAYER_SOCKET_INNER, 0.0,
+      Core.UPPER_CHAMFER_MM, ProfileParameterData.PROFILE_ON) then
     DisplayMessageBox("The end-mill paths were created, but the V-bit path failed.")
+    return false
+  end
+
+  if options.include_magnets and options.magnet_chamfer_mm > 0.000001 and
+     not create_profile_toolpath(
+       "Gridfinity 5 - 45deg Magnet Chamfers", vbit_tool, material, unit,
+       LAYER_MAGNET_INNER, Core.TOTAL_DEPTH_MM, options.magnet_chamfer_mm,
+       ProfileParameterData.PROFILE_ON) then
+    DisplayMessageBox("The socket chamfer was created, but the magnet-chamfer path failed.")
     return false
   end
 
   job:Refresh2DView()
   DisplayMessageBox(
-    "Created a " .. options.columns .. " x " .. options.rows .. " Gridfinity baseplate.\n\n" ..
+    "Created a " .. options.columns .. " x " .. options.rows .. " Gridfinity baseplate " ..
+    "with editable native toolpaths.\n\n" ..
     "Preview every toolpath and verify tool numbers, feeds, safe Z, and cut depths before machining.")
   return true
 end

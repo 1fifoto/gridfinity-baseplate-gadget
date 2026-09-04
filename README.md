@@ -1,15 +1,20 @@
 # Gridfinity Baseplate Gadget for VCarve
 
 Creates a configurable negative Gridfinity baseplate pocket in VCarve Pro or
-Aspire. The gadget draws the socket boundaries and creates exactly three
-toolpaths: roughing, finishing, and 45-degree upper chamfers. Optional magnet
+Aspire. The gadget draws the machining boundaries on dedicated layers and
+creates editable native Vectric pocket and profile toolpaths. Optional magnet
 sub-pockets are machined below the standard 4.65 mm socket floor.
 
 The gadget creates these toolpaths:
 
-1. `Gridfinity 1 - Rough` — stepped raster clearing with the selected roughing end mill.
-2. `Gridfinity 2 - Finish` — profiles the vertical wall; with positive roughing allowance it also finishes the socket floor.
-3. `Gridfinity 3 - 45deg Chamfers` — cuts the 2.15 mm upper seating face with a V-bit.
+1. `Gridfinity 1 - Rough` — pockets the socket with the selected roughing end mill, leaving the specified radial and axial allowance.
+2. `Gridfinity 2 - Finish` — profiles the wall when allowance is zero, or pockets the complete socket when allowance is positive.
+3. `Gridfinity 3 - 45deg Socket Chamfers` — cuts the 2.15 mm upper seating face with a V-bit when magnets are disabled.
+
+When magnets are enabled, their different cutting depths require separate
+native operations: `Gridfinity 3 - Magnet Pockets`, `Gridfinity 4 - 45deg
+Socket Chamfers`, and, when the magnet chamfer is positive, `Gridfinity 5 -
+45deg Magnet Chamfers`.
 
 ## Gridfinity specification
 
@@ -38,13 +43,24 @@ Tool units do not need to match the job units.
 
 For the simplified profile, a 1/4-inch roughing end mill, 1/8-inch finishing
 end mill, and 1/2-inch 90° V-bit are suitable. The 1/8-inch cutter radius is
-just under the 1.6 mm floor-plan corner radius. Roughing paths use a conservative
-inner region whenever the roughing cutter is larger than a profile corner,
-leaving that material for the finishing cutter rather than gouging the socket.
-The V-bit cuts only the upper chamfer and never enters the lower corner.
-When roughing allowance is zero, roughing clears to the terminal depth and the
-finishing toolpath contains only wall profiles down to 4.65 mm. A positive
-allowance retains the finishing raster across the socket floor.
+just under the 1.6 mm floor-plan corner radius. Vectric's native pocket
+calculation leaves material which the roughing cutter cannot reach in the
+rounded corners rather than gouging the socket. The V-bit cuts only the upper
+chamfer and never enters the lower corner. When roughing allowance is zero,
+roughing clears to the terminal depth and finishing profiles the straight wall
+from 2.15 mm to 4.65 mm. A positive allowance causes the finishing tool to
+pocket the complete socket to its terminal depth.
+
+The generated vectors are organized on four layers:
+
+- `Gridfinity - Socket Outer Edge` — the visible top edge of the main chamfer.
+- `Gridfinity - Socket Inner Edge` — the socket wall and driving vector for socket toolpaths.
+- `Gridfinity - Magnet Outer Edge` — the visible top edge of each optional magnet chamfer.
+- `Gridfinity - Magnet Inner Edge` — the finished magnet-hole wall and driving vector for magnet toolpaths.
+
+Every native toolpath uses a layer-based vector selector. Recalculate the
+toolpaths after changing a selected tool, its cutting parameters, material
+settings, or geometry on one of these layers.
 
 ## Install
 
@@ -84,13 +100,14 @@ a GitHub Release and attach a versioned `.vgadget` installer.
    including in an inch job.
 5. Optionally enable four round magnet sub-pockets per cell and set their
    diameter, depth, top chamfer, edge inset, and minimum retained base.
-6. Create the baseplate, preview all three toolpaths, and inspect tool numbers,
+6. Create the baseplate, preview all generated toolpaths, and inspect tool numbers,
    feeds, safe Z, and depths before posting code.
 
 Cell width and height are independently adjustable and default to 42 mm. The
-green, blue, orange, and purple preview-vector layers represent the top opening,
-vertical wall, bottom opening, and magnet pockets. Re-running the gadget replaces those preview
-vectors but adds a new set of toolpaths; delete obsolete toolpaths manually.
+green and blue socket layers represent the outer and inner socket edges; the
+orange and purple magnet layers represent the outer and inner magnet edges.
+Re-running the gadget replaces the vectors on these named layers but adds a new
+set of toolpaths; delete obsolete toolpaths manually.
 
 ## Development
 
@@ -101,9 +118,9 @@ lua tests/test_core.lua
 luac -p Gridfinity_Baseplate.lua tests/test_core.lua
 ```
 
-External toolpaths are intentionally used because one toolpath must machine a
-depth-varying socket profile. Vectric cannot recalculate external toolpaths after
-creation; change inputs by deleting the old paths and running the gadget again.
+Version 1.1 and later use standard Vectric pocket and profile toolpaths instead
+of external toolpaths. They can be edited and recalculated in VCarve or Aspire,
+and their layer selectors continue to find regenerated vectors by layer name.
 
 Only properties that define removed material are carried into the CNC gadget.
 FreeCAD's magnet edge thickness and center-cut fillets define the surrounding
