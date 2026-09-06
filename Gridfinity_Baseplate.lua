@@ -255,16 +255,32 @@ local function magnet_centers(options, cx, cy, unit)
   }
 end
 
+function Core.get_magnet_layers(manager, include_magnets)
+  if include_magnets then
+    return manager:GetLayerWithName(LAYER_MAGNET_OUTER),
+           manager:GetLayerWithName(LAYER_MAGNET_INNER)
+  end
+  -- FindLayerWithName does not create a missing layer. Existing layers are
+  -- returned so stale geometry from an earlier magnet-enabled run can be
+  -- cleared without adding magnet layers to a socket-only job.
+  return manager:FindLayerWithName(LAYER_MAGNET_OUTER),
+         manager:FindLayerWithName(LAYER_MAGNET_INNER)
+end
+
 local function add_geometry(job, options, unit)
   local manager = job.LayerManager
   local socket_outer_layer = manager:GetLayerWithName(LAYER_SOCKET_OUTER)
   local socket_inner_layer = manager:GetLayerWithName(LAYER_SOCKET_INNER)
-  local magnet_outer_layer = manager:GetLayerWithName(LAYER_MAGNET_OUTER)
-  local magnet_inner_layer = manager:GetLayerWithName(LAYER_MAGNET_INNER)
+  local magnet_outer_layer, magnet_inner_layer = Core.get_magnet_layers(
+    manager, options.include_magnets)
   clear_layer(socket_outer_layer)
   clear_layer(socket_inner_layer)
-  clear_layer(magnet_outer_layer)
-  clear_layer(magnet_inner_layer)
+  if magnet_outer_layer ~= nil then
+    clear_layer(magnet_outer_layer)
+  end
+  if magnet_inner_layer ~= nil then
+    clear_layer(magnet_inner_layer)
+  end
   for _, layer_name in ipairs(LEGACY_LAYERS) do
     local legacy_layer = manager:FindLayerWithName(layer_name)
     if legacy_layer ~= nil then
@@ -273,8 +289,10 @@ local function add_geometry(job, options, unit)
   end
   socket_outer_layer:SetColour(0.10, 0.55, 0.30)
   socket_inner_layer:SetColour(0.15, 0.35, 0.80)
-  magnet_outer_layer:SetColour(0.85, 0.45, 0.10)
-  magnet_inner_layer:SetColour(0.55, 0.15, 0.65)
+  if options.include_magnets then
+    magnet_outer_layer:SetColour(0.85, 0.45, 0.10)
+    magnet_inner_layer:SetColour(0.55, 0.15, 0.65)
+  end
 
   for row = 0, options.rows - 1 do
     for col = 0, options.columns - 1 do
@@ -313,14 +331,22 @@ local function create_position_data(material, unit)
   return pos_data
 end
 
-local function create_layer_selector(layer_name)
-  local selector = GeometrySelector()
+function Core.configure_layer_selector(selector, layer_name)
+  -- GeometrySelector starts inactive. Activating and applying it selects the
+  -- vectors needed for the initial calculation; retaining it on the native
+  -- toolpath also allows Vectric to find the layer again when recalculating.
+  selector.GeometryFilterUsed = true
   selector.OnlyOnLayers = true
   selector.SelectClosed = true
   selector.SelectOpen = false
   selector.AllowOpen = false
   selector:AddLayerName(layer_name)
+  selector:ApplySelector()
   return selector
+end
+
+local function create_layer_selector(layer_name)
+  return Core.configure_layer_selector(GeometrySelector(), layer_name)
 end
 
 local function create_pocket_toolpath(name, tool, material, unit, layer_name,

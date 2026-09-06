@@ -36,6 +36,51 @@ assert(core.finish_uses_pocket(0.01), "positive allowance should create a native
 near(core.magnet_outer_diameter_mm(6.2, 0.25), 6.7, 1e-9,
   "magnet outer edge should include the chamfer on both sides")
 
+local selector_applied = false
+local selected_layer = nil
+local selector = {
+  AddLayerName = function(_, layer_name)
+    selected_layer = layer_name
+  end,
+  ApplySelector = function()
+    selector_applied = true
+  end
+}
+local configured_selector = core.configure_layer_selector(selector, "Test Layer")
+assert(configured_selector == selector, "layer selector configuration should return its selector")
+assert(selector.GeometryFilterUsed, "layer selector must be active for initial toolpath calculation")
+assert(selector.OnlyOnLayers, "layer selector should restrict selection to its configured layers")
+assert(selector.SelectClosed, "layer selector should select closed vectors")
+assert(not selector.SelectOpen, "layer selector should not select open vectors")
+assert(not selector.AllowOpen, "layer selector should not allow open vectors")
+assert(selected_layer == "Test Layer", "layer selector should retain its layer name")
+assert(selector_applied, "layer selector must select vectors before initial toolpath calculation")
+
+local created_layers = {}
+local existing_layers = {
+  ["Gridfinity - Magnet Outer Edge"] = {name = "existing outer"}
+}
+local layer_manager = {
+  GetLayerWithName = function(_, layer_name)
+    created_layers[#created_layers + 1] = layer_name
+    return {name = layer_name}
+  end,
+  FindLayerWithName = function(_, layer_name)
+    return existing_layers[layer_name]
+  end
+}
+local magnet_outer, magnet_inner = core.get_magnet_layers(layer_manager, false)
+assert(#created_layers == 0, "magnet layers must not be created when magnets are disabled")
+assert(magnet_outer == existing_layers["Gridfinity - Magnet Outer Edge"],
+  "an existing magnet layer should be returned for stale-geometry cleanup")
+assert(magnet_inner == nil, "a missing disabled magnet layer should remain missing")
+magnet_outer, magnet_inner = core.get_magnet_layers(layer_manager, true)
+assert(#created_layers == 2, "both magnet layers should be created when magnets are enabled")
+assert(magnet_outer.name == "Gridfinity - Magnet Outer Edge",
+  "enabled magnets should use the outer magnet layer")
+assert(magnet_inner.name == "Gridfinity - Magnet Inner Edge",
+  "enabled magnets should use the inner magnet layer")
+
 local iw, ih, ir = core.inset_profile(35.8, 35.8, 0.9, 3.375)
 near(iw, 27.25, 1e-9, "conservative large-tool inset width")
 near(ih, 27.25, 1e-9, "conservative large-tool inset height")
