@@ -8,6 +8,23 @@ local function near(actual, expected, epsilon, label)
   end
 end
 
+local function layout_options(overrides)
+  local options = {
+    size_mode = "Grid Rows / Columns",
+    columns = 3,
+    rows = 2,
+    overall_x_mm = 126,
+    overall_y_mm = 84,
+    cell_width_mm = 42,
+    cell_height_mm = 42,
+    origin_from = "Bottom Left"
+  }
+  for key, value in pairs(overrides or {}) do
+    options[key] = value
+  end
+  return options
+end
+
 local w, r = core.profile_at_depth_mm(0)
 near(w, 41.5, 1e-9, "top width")
 near(r, 3.75, 1e-9, "top radius")
@@ -35,6 +52,84 @@ assert(not core.finish_uses_pocket(0.0), "zero allowance should create a native 
 assert(core.finish_uses_pocket(0.01), "positive allowance should create a native pocket finish")
 near(core.magnet_outer_diameter_mm(6.2, 0.25), 6.7, 1e-9,
   "magnet outer edge should include the chamfer on both sides")
+
+local grid_w, grid_h = core.grid_size_mm(3, 2, 50, 40)
+near(grid_w, 150, 1e-9, "custom X pitch should determine grid width")
+near(grid_h, 80, 1e-9, "custom Y pitch should determine grid height")
+
+local size = assert(core.resolve_size(layout_options({
+  cell_width_mm = 50,
+  cell_height_mm = 40
+})))
+near(size.overall_x_mm, 150, 1e-9, "grid-sized overall X")
+near(size.overall_y_mm, 80, 1e-9, "grid-sized overall Y")
+
+size = assert(core.resolve_size(layout_options({
+  size_mode = "Overall Dimensions",
+  overall_x_mm = 100,
+  overall_y_mm = 85
+})))
+assert(size.columns == 3, "arbitrary overall X should include the partial edge column")
+assert(size.rows == 3, "arbitrary overall Y should include the partial edge row")
+
+size = assert(core.resolve_size(layout_options({
+  size_mode = "Overall Dimensions",
+  overall_x_mm = 0.001,
+  overall_y_mm = 0.001
+})))
+assert(size.columns == 1 and size.rows == 1,
+  "a positive overall size smaller than one cell should still produce one partial cell")
+
+-- The two original placement modes map exactly to Bottom Left and Center.
+local layout = assert(core.create_layout(layout_options(), 10, 20))
+near(layout.grid_min_x, 10, 1e-9, "legacy positive-origin X")
+near(layout.grid_min_y, 20, 1e-9, "legacy positive-origin Y")
+near(layout.max_x, 136, 1e-9, "legacy positive-origin right edge")
+near(layout.max_y, 104, 1e-9, "legacy positive-origin top edge")
+local cells = core.layout_cells(layout)
+assert(#cells == 6, "grid layout should enumerate every cell")
+near(cells[1].cx, 31, 1e-9, "legacy first-cell center X")
+near(cells[1].cy, 41, 1e-9, "legacy first-cell center Y")
+
+layout = assert(core.create_layout(layout_options({origin_from = "Center"}), 10, 20))
+near(layout.grid_min_x, -53, 1e-9, "legacy centered-origin X")
+near(layout.grid_min_y, -22, 1e-9, "legacy centered-origin Y")
+
+local expected_origins = {
+  ["Bottom Left"] = {0, 0},
+  ["Bottom Right"] = {-100, 0},
+  ["Top Left"] = {0, -85},
+  ["Top Right"] = {-100, -85},
+  ["Center"] = {-50, -42.5}
+}
+for origin_from, expected in pairs(expected_origins) do
+  layout = assert(core.create_layout(layout_options({
+    size_mode = "Overall Dimensions",
+    overall_x_mm = 100,
+    overall_y_mm = 85,
+    origin_from = origin_from
+  }), 0, 0))
+  near(layout.min_x, expected[1], 1e-9, origin_from .. " requested min X")
+  near(layout.min_y, expected[2], 1e-9, origin_from .. " requested min Y")
+  assert(layout.columns == 3 and layout.rows == 3,
+    origin_from .. " should preserve shared derived grid size")
+end
+
+layout = assert(core.create_layout(layout_options({
+  size_mode = "Overall Dimensions",
+  overall_x_mm = 100,
+  overall_y_mm = 85,
+  origin_from = "Bottom Right"
+}), 100, 0))
+near(layout.grid_min_x, -26, 1e-9, "right origin should clip the leftmost column")
+cells = core.layout_cells(layout)
+near(cells[1].clip_min_x, 0, 1e-9, "partial left cell should clip at the requested edge")
+near(cells[3].clip_max_x, 100, 1e-9, "rightmost cell should end at the requested edge")
+
+local layout_ok = core.validate_layout(layout, 0, 0, 100, 85)
+assert(layout_ok, "arbitrary overall layout should fit its matching job bounds")
+layout_ok = core.validate_layout(layout, 0, 0, 99, 85)
+assert(not layout_ok, "requested physical layout outside the job should fail")
 
 local selector_applied = false
 local selected_layer = nil
@@ -97,20 +192,24 @@ ok = core.validate_grid(3, 2, 1, 0, 0, 0, 126, 84, 42, 42)
 assert(not ok, "out-of-bounds grid should fail")
 
 local vbit_error
+ok, vbit_error = core.validate_tool_geometry(6.35, 3.175, 6.35, 90, 0.2, 4.65, 6)
+assert(ok, "one-eighth inch finish and one-quarter inch V-bit should fit simplified geometry")
 ok, vbit_error = core.validate_tool_geometry(6.35, 3.175, 12.7, 90, 0.2, 4.65, 6)
-assert(ok, "one-eighth inch finish and one-half inch V-bit should fit simplified geometry")
-ok = core.validate_tool_geometry(6.35, 1.5875, 12.7, 45, 0.2, 4.65, 6)
+assert(not ok, "one-half inch V-bit should be rejected for Gridfinity chamfers")
+assert(string.find(vbit_error, "1/2 inch V-bit is too large", 1, true),
+  "oversized V-bit error should identify the rejected one-half inch tool")
+ok = core.validate_tool_geometry(6.35, 1.5875, 6.35, 45, 0.2, 4.65, 6)
 assert(not ok, "45 degree included-angle bit should fail")
-ok, vbit_error = core.validate_tool_geometry(6.35, 3.175, 12.7, nil, 0.2, 4.65, 6)
+ok, vbit_error = core.validate_tool_geometry(6.35, 3.175, 6.35, nil, 0.2, 4.65, 6)
 assert(not ok, "missing V-bit angle should fail without a Lua error")
 assert(string.find(vbit_error, "valid included angle", 1, true), "missing-angle error should explain the problem")
 ok, vbit_error = core.validate_tool_geometry(6.35, 3.175, 1.4, 90, 0.2, 4.65, 6)
 assert(not ok, "small V-bit should fail the upper-chamfer requirement")
 assert(string.find(vbit_error, "at least 4.3 mm", 1, true), "small V-bit error should explain upper requirement")
-ok = core.validate_tool_geometry(6.35, 1.5875, 12.7, 90, 0.2, 4.65, 4)
+ok = core.validate_tool_geometry(6.35, 1.5875, 6.35, 90, 0.2, 4.65, 4)
 assert(not ok, "thin material should fail")
 local tool_error
-ok, tool_error = core.validate_tool_geometry(6.35, 6.35, 12.7, 90, 0.2, 4.65, 8)
+ok, tool_error = core.validate_tool_geometry(6.35, 6.35, 6.35, 90, 0.2, 4.65, 8)
 assert(not ok, "one-quarter inch finish cutter should fail the machined floor corner")
 assert(string.find(tool_error, "0.2500 in", 1, true), "finish-tool error should show selected inch size")
 

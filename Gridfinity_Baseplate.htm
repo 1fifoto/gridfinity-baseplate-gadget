@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-  <title>Gridfinity Baseplate</title>
+  <title>Gridfinity</title>
   <style type="text/css">
     body { background: #f0f0f0; font-family: Arial, Helvetica, sans-serif; font-size: 12px; margin: 14px; }
     h1 { font-size: 22px; margin: 0 0 4px 0; color: #2e2e30; }
@@ -11,31 +11,101 @@
     td { padding: 3px 5px; vertical-align: middle; }
     td.label { width: 38%; }
     input.number { width: 82px; }
+    input[readonly] { background: #e3e3e3; color: #555; }
     input.ToolPicker { width: 82px; }
     .tool-name { color: #444; }
     .hint { color: #666; font-size: 11px; line-height: 1.35; }
     .spec { background: #e4f2ea; border: 1px solid #9bbda9; padding: 7px; margin-top: 8px; }
     .buttons td { padding-top: 14px; }
     .buttons input { font-weight: bold; width: 120px; }
+    .origin-grid { width: 190px; margin: 4px auto; }
+    .origin-grid td { width: 33%; text-align: center; height: 28px; }
   </style>
+  <script type="text/javascript">
+    function selectedIndex(name) {
+      var items = document.getElementsByName(name);
+      for (var i = 0; i < items.length; ++i) if (items[i].checked) return i + 1;
+      return 1;
+    }
+    function numberValue(id) {
+      var value = parseFloat(document.getElementById(id).value);
+      return isFinite(value) ? value : 0;
+    }
+    function updateSizing() {
+      var overallMode = selectedIndex('SizeMode') === 1;
+      var overallX = document.getElementById('OverallX');
+      var overallY = document.getElementById('OverallY');
+      var columns = document.getElementById('Columns');
+      var rows = document.getElementById('Rows');
+      overallX.readOnly = !overallMode;
+      overallY.readOnly = !overallMode;
+      columns.readOnly = overallMode;
+      rows.readOnly = overallMode;
+      var cellWidth = numberValue('CellWidth');
+      var cellHeight = numberValue('CellHeight');
+      if (overallMode) {
+        if (cellWidth > 0) columns.value = Math.max(1, Math.ceil(numberValue('OverallX') / cellWidth));
+        if (cellHeight > 0) rows.value = Math.max(1, Math.ceil(numberValue('OverallY') / cellHeight));
+      } else {
+        overallX.value = (numberValue('Columns') * cellWidth).toFixed(3);
+        overallY.value = (numberValue('Rows') * cellHeight).toFixed(3);
+      }
+    }
+    function updateOutput() {
+      var filler = selectedIndex('OutputType') === 2;
+      document.getElementById('BaseplateOptions').style.display = filler ? 'none' : 'block';
+      document.getElementById('ButtonOK').value = filler ? 'Create Filler Plate' : 'Create Baseplate';
+    }
+    function initializeDialog() {
+      updateSizing();
+      updateOutput();
+    }
+  </script>
 </head>
-<body>
-  <h1>Gridfinity Baseplate</h1>
-  <div class="hint">Creates a custom pocket definition and exactly three CNC toolpaths. All dimensions are millimeters.</div>
+<body onload="initializeDialog()">
+  <h1>Gridfinity</h1>
+  <div class="hint">Creates Gridfinity CNC geometry and editable native toolpaths. All dimensions are millimeters.</div>
 
-  <h2>Grid size</h2>
+  <h2>Output Type</h2>
   <table>
-    <tr><td class="label">Cells in X</td><td><input class="number" id="Columns" type="text"></td></tr>
-    <tr><td class="label">Cells in Y</td><td><input class="number" id="Rows" type="text"></td></tr>
+    <tr><td><label><input id="OutputTypeRadio1" name="OutputType" type="radio" onchange="updateOutput()"> Baseplate</label></td></tr>
+    <tr><td><label><input id="OutputTypeRadio2" name="OutputType" type="radio" onchange="updateOutput()"> Filler Plate</label></td></tr>
   </table>
 
-  <h2>Placement</h2>
+  <h2>Size By</h2>
   <table>
-		<tr><td class="label">Generation location</td><td><select id="GenerationLocation"><option>Positive from Origin</option><option>Centered on Origin</option></select></td></tr>
+    <tr>
+      <td><label><input id="SizeModeRadio1" name="SizeMode" type="radio" onchange="updateSizing()"> Overall Dimensions</label></td>
+      <td><label><input id="SizeModeRadio2" name="SizeMode" type="radio" onchange="updateSizing()"> Grid Rows / Columns</label></td>
+    </tr>
+  </table>
+  <table>
+    <tr><td class="label">Overall X</td><td><input class="number" id="OverallX" type="text" oninput="updateSizing()"> mm</td></tr>
+    <tr><td class="label">Overall Y</td><td><input class="number" id="OverallY" type="text" oninput="updateSizing()"> mm</td></tr>
+    <tr><td class="label">Grid Columns</td><td><input class="number" id="Columns" type="text" oninput="updateSizing()"></td></tr>
+    <tr><td class="label">Grid Rows</td><td><input class="number" id="Rows" type="text" oninput="updateSizing()"></td></tr>
+  </table>
+
+  <h2>Origin From</h2>
+  <table class="origin-grid">
+    <tr>
+      <td><label>TL<br><input id="OriginFromRadio1" name="OriginFrom" type="radio"></label></td>
+      <td></td>
+      <td><label>TR<br><input id="OriginFromRadio2" name="OriginFrom" type="radio"></label></td>
+    </tr>
+    <tr><td></td><td><label>C<br><input id="OriginFromRadio3" name="OriginFrom" type="radio"></label></td><td></td></tr>
+    <tr>
+      <td><label>BL<br><input id="OriginFromRadio4" name="OriginFrom" type="radio"></label></td>
+      <td></td>
+      <td><label>BR<br><input id="OriginFromRadio5" name="OriginFrom" type="radio"></label></td>
+    </tr>
+  </table>
+  <table>
     <tr><td class="label">X offset to origin</td><td><input class="number" id="OffsetX" type="text"> mm</td></tr>
     <tr><td class="label">Y offset to origin</td><td><input class="number" id="OffsetY" type="text"> mm</td></tr>
   </table>
 
+  <div id="BaseplateOptions">
   <h2>Magnet sub-pockets</h2>
   <table>
     <tr><td class="label">Include magnet pockets</td><td><input id="IncludeMagnets" type="checkbox"></td></tr>
@@ -46,6 +116,7 @@
     <tr><td class="label">Minimum retained base</td><td><input class="number" id="MagnetBase" type="text"> mm</td></tr>
   </table>
   <div class="hint">Four round pockets are placed in each cell. The finishing end mill clears them and the V-bit cuts their optional top chamfer.</div>
+  </div>
 
   <h2>Machining tools</h2>
   <table>
@@ -66,16 +137,16 @@
       <td><input id="VBitToolButton" class="ToolPicker" type="button" value="Select..."></td>
       <td><span id="VBitToolName" class="tool-name"></span></td>
     </tr>
-    <tr><td colspan="3"><div class="hint">The required cutter has a 45&deg; cutting edge, represented in Vectric as a <b>90&deg; included-angle V-bit</b>. Tool database feeds, speeds, stepdown, and stepover are retained.</div></td></tr>
+    <tr><td colspan="3"><div class="hint">The required cutter has a 45&deg; cutting edge, represented in Vectric as a <b>90&deg; included-angle V-bit</b>, no larger than 1/4&quot; (6.35 mm) in diameter. A 1/2&quot; V-bit is not supported. Tool database feeds, speeds, stepdown, and stepover are retained.</div></td></tr>
     <tr><td colspan="3"><div class="hint">Inch tools are supported. With the lower chamfer omitted, the machined floor has a 1.6 mm plan-view corner radius and a 1/8&quot; finishing end mill fits.</div></td></tr>
   </table>
 
-	<h2>Non-standard cell dimensions</h2>
-	<table>
-	  <tr><td class="label">Cell width (X)</td><td><input class="number" id="CellWidth" type="text"> mm</td></tr>
-	  <tr><td class="label">Cell height (Y)</td><td><input class="number" id="CellHeight" type="text"> mm</td></tr>
-	</table>
-	<div class="hint">Standard Gridfinity cells are 42 mm &times; 42 mm. Change these values only for a non-standard grid.</div>
+  <h2>Gridfinity Parameters</h2>
+  <table>
+    <tr><td class="label">Cell width (X)</td><td><input class="number" id="CellWidth" type="text" oninput="updateSizing()"> mm</td></tr>
+    <tr><td class="label">Cell height (Y)</td><td><input class="number" id="CellHeight" type="text" oninput="updateSizing()"> mm</td></tr>
+  </table>
+  <div class="hint">Standard Gridfinity cells are 42 mm &times; 42 mm. These values also define the X and Y grid pitch.</div>
 
   <div class="spec">
     Machined pocket profile: 42 mm &times; 42 mm cell; 2.15 mm upper chamfer;
