@@ -5,7 +5,7 @@ build:
 
 test:
 	lua tests/test_core.lua
-	luac -p Gridfinity_Baseplate.lua tests/test_core.lua
+	luac -p Gridfinity_Toolpath.lua tests/test_core.lua
 
 watch:
 	./scripts/watch-vgadget.sh run

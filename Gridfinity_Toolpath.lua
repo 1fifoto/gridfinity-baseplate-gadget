@@ -1,5 +1,5 @@
 -- VECTRIC LUA SCRIPT
--- Gridfinity Baseplate Gadget
+-- Gridfinity Toolpath Gadget
 -- Generates editable Vectric pocket and profile toolpaths from layer-associated
 -- socket and magnet geometry.
 
@@ -8,9 +8,9 @@ if not GRIDFINITY_TEST_MODE then
   require "strict"
 end
 
-local TITLE = "Gridfinity"
+local TITLE = "Gridfinity Toolpath"
 local VERSION = "1.1.0"
-local REGISTRY_SECTION = "GridfinityBaseplateGadget"
+local REGISTRY_SECTION = "GridfinityToolpathGadget"
 local LAYER_SOCKET_OUTER = "Gridfinity - Socket Outer Edge"
 local LAYER_SOCKET_INNER = "Gridfinity - Socket Inner Edge"
 local LAYER_MAGNET_OUTER = "Gridfinity - Magnet Outer Edge"
@@ -617,17 +617,25 @@ end
 local function load_options(material)
   local registry = Registry(REGISTRY_SECTION)
   local unit = Core.to_job_units(1.0, material.InMM)
+  local saved_size_mode = registry:GetString("SizeMode", "")
+  local first_run = saved_size_mode == ""
   local columns = registry:GetInt("Columns", 2)
   local rows = registry:GetInt("Rows", 2)
   local cell_width_mm = registry:GetDouble("CellWidthMM", 42.0)
   local cell_height_mm = registry:GetDouble("CellHeightMM", 42.0)
+  local default_overall_x_mm = first_run and material.Width / unit or columns * cell_width_mm
+  local default_overall_y_mm = first_run and material.Height / unit or rows * cell_height_mm
+  if first_run then
+    columns = math.max(1, math.ceil(default_overall_x_mm / cell_width_mm - 0.000000001))
+    rows = math.max(1, math.ceil(default_overall_y_mm / cell_height_mm - 0.000000001))
+  end
   return {
     output_type = registry:GetString("OutputType", "Baseplate"),
-    size_mode = registry:GetString("SizeMode", "Grid Rows / Columns"),
+    size_mode = first_run and "Overall Dimensions" or saved_size_mode,
     columns = columns,
     rows = rows,
-    overall_x_mm = registry:GetDouble("OverallXMM", columns * cell_width_mm),
-    overall_y_mm = registry:GetDouble("OverallYMM", rows * cell_height_mm),
+    overall_x_mm = registry:GetDouble("OverallXMM", default_overall_x_mm),
+    overall_y_mm = registry:GetDouble("OverallYMM", default_overall_y_mm),
     cell_width_mm = cell_width_mm,
     cell_height_mm = cell_height_mm,
     origin_from = registry:GetString("OriginFrom", "Bottom Left"),
@@ -672,8 +680,8 @@ local function save_options(options, rough_tool, finish_tool, vbit_tool)
 end
 
 local function show_dialog(script_path, material, options)
-  local html_path = "file:" .. path_join(script_path, "Gridfinity_Baseplate.htm")
-  local dialog = HTML_Dialog(false, html_path, 650, 780, TITLE .. " " .. VERSION)
+  local html_path = "file:" .. path_join(script_path, "Gridfinity_Toolpath.htm")
+  local dialog = HTML_Dialog(false, html_path, 650, 720, TITLE .. " " .. VERSION)
   dialog:AddRadioGroup("OutputType", options.output_type == "Filler Plate" and 2 or 1)
   dialog:AddRadioGroup("SizeMode", options.size_mode == "Overall Dimensions" and 1 or 2)
   dialog:AddDoubleField("OverallX", options.overall_x_mm)

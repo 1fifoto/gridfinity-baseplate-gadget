@@ -26,7 +26,7 @@ jobs:
       - name: Test Lua sources
         run: |
           lua tests/test_core.lua
-          luac -p Gridfinity_Baseplate.lua tests/test_core.lua
+          luac -p Gridfinity_Toolpath.lua tests/test_core.lua
 
       - name: Build installable VGadget
         shell: bash
@@ -42,7 +42,7 @@ jobs:
       - name: Upload VGadget artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Gridfinity_Baseplate-${{ github.sha }}
+          name: Gridfinity_Toolpath-${{ github.sha }}
           path: dist/*.vgadget
           if-no-files-found: error
 

@@ -1,4 +1,4 @@
-# Gridfinity Baseplate Gadget for VCarve
+# Gridfinity Toolpath Gadget for VCarve
 
 Creates a configurable negative Gridfinity baseplate pocket in VCarve Pro or
 Aspire. The gadget draws the machining boundaries on dedicated layers and
@@ -64,15 +64,15 @@ settings, or geometry on one of these layers.
 
 ## Install
 
-Download `Gridfinity_Baseplate_<version>.vgadget` from a release, then choose **Gadgets →
+Download `Gridfinity_Toolpath_<version>.vgadget` from a release, then choose **Gadgets →
 Install New Gadget…** in VCarve Pro or Aspire. To build the installer locally:
 
 ```sh
 ./scripts/build-vgadget.sh
 ```
 
-This writes `dist/Gridfinity_Baseplate.vgadget`. The archive contains the
-required top-level `Gridfinity_Baseplate` directory and is checked with
+This writes `dist/Gridfinity_Toolpath.vgadget`. The archive contains the
+required top-level `Gridfinity_Toolpath` directory and is checked with
 `unzip -t` before the build succeeds.
 
 To rebuild automatically whenever a gadget source file changes:
@@ -92,7 +92,7 @@ a GitHub Release and attach a versioned `.vgadget` installer.
 
 1. Create a job large enough for `columns × 42 mm` by `rows × 42 mm` and set
    the actual material thickness.
-2. Run **Gadgets → Gridfinity Baseplate**.
+2. Run **Gadgets → Gridfinity Toolpath**.
 3. Enter rows and columns, choose centered or lower-left placement, and select
    all three tools.
 4. Choose **Positive from Origin** (lower-left at the offset) or **Centered on
@@ -115,7 +115,7 @@ Run the pure geometry tests and Lua syntax check:
 
 ```sh
 lua tests/test_core.lua
-luac -p Gridfinity_Baseplate.lua tests/test_core.lua
+luac -p Gridfinity_Toolpath.lua tests/test_core.lua
 ```
 
 Version 1.1 and later use standard Vectric pocket and profile toolpaths instead

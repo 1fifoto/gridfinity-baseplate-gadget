@@ -8,8 +8,8 @@ log_file="$dist_dir/build-watch.log"
 
 fingerprint() {
   cksum \
-    "$project_dir/Gridfinity_Baseplate.lua" \
-    "$project_dir/Gridfinity_Baseplate.htm" \
+    "$project_dir/Gridfinity_Toolpath.lua" \
+    "$project_dir/Gridfinity_Toolpath.htm" \
     "$project_dir/README.md" \
     "$project_dir/scripts/build-vgadget.sh" | cksum | awk '{print $1 ":" $2}'
 }

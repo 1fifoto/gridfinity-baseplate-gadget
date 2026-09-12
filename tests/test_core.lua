@@ -1,5 +1,5 @@
 GRIDFINITY_TEST_MODE = true
-local core = dofile("Gridfinity_Baseplate.lua")
+local core = dofile("Gridfinity_Toolpath.lua")
 GRIDFINITY_TEST_MODE = nil
 
 local function near(actual, expected, epsilon, label)
@@ -218,4 +218,4 @@ assert(ok, "standard magnet parameters should validate")
 ok = core.validate_magnets(true, 6.2, 2.4, 0.25, 8, 0.4, 42, 42, 6.35, 4.65, 7.45)
 assert(not ok, "oversized magnet end mill should fail")
 
-print("Gridfinity Baseplate core tests passed")
+print("Gridfinity Toolpath core tests passed")
