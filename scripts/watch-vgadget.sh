@@ -11,6 +11,7 @@ fingerprint() {
     "$project_dir/Gridfinity_Toolpath.lua" \
     "$project_dir/Gridfinity_Toolpath.htm" \
     "$project_dir/README.md" \
+    "$project_dir/LICENSE" \
     "$project_dir/scripts/build-vgadget.sh" | cksum | awk '{print $1 ":" $2}'
 }
 
@@ -20,10 +21,11 @@ run_watcher() {
     current=$(fingerprint)
     if [ "$current" != "$previous" ]; then
       if "$project_dir/scripts/build-vgadget.sh"; then
-        previous="$current"
+        :
       else
         echo "Build failed; waiting for the next change." >&2
       fi
+      previous="$current"
     fi
     sleep 1
   done

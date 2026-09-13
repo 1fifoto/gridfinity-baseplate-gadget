@@ -33,6 +33,11 @@ jobs:
         run: |
           set -euo pipefail
           if [[ "${GITHUB_REF_TYPE}" == "tag" ]]; then
+            lua_version="$(sed -n 's/^local VERSION = "\([^"]*\)"/\1/p' Gridfinity_Toolpath.lua)"
+            if [[ "${GITHUB_REF_NAME}" != "v${lua_version}" ]]; then
+              echo "Tag ${GITHUB_REF_NAME} does not match Lua version ${lua_version}." >&2
+              exit 1
+            fi
             version="${GITHUB_REF_NAME}"
           else
             version="dev-${GITHUB_SHA::7}"
@@ -52,7 +57,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          release_flags=()
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            release_flags+=(--prerelease)
+          fi
           gh release create "${GITHUB_REF_NAME}" \
             dist/*.vgadget \
             --title "${GITHUB_REF_NAME}" \
-            --generate-notes
+            --generate-notes \
+            "${release_flags[@]}"

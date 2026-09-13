@@ -6,21 +6,24 @@ Creates editable native Vectric toolpaths for either of these Gridfinity parts:
 - **Filler Plate** — a removable flat cover with positive mating feet machined
   underside-up, followed by a tabbed outside cutout.
 
-The gadget supports VCarve Pro and Aspire, metric and inch jobs, custom cell
-pitch, two sizing modes, five origin anchors, offsets, and optional four-hole
-magnet patterns. All values entered in the gadget are millimeters; tools may use
-either millimeter or inch units in the Vectric tool database.
+The gadget is tested in VCarve Pro. It uses the shared Vectric V12 Gadget API
+and is expected to work in Aspire, but Aspire remains unverified. It supports
+metric and inch jobs, custom cell pitch, two sizing modes, five origin anchors,
+offsets, and optional four-hole magnet patterns. All values entered in the
+gadget are millimeters; tools may use either millimeter or inch units in the
+Vectric tool database.
 
 ## Requirements
 
-- VCarve Pro or Aspire with Gadget support (V12 SDK API).
+- VCarve Pro with Gadget support (V12 SDK API); Aspire is currently unverified.
 - A single-sided, flat job with its actual stock dimensions and thickness set.
 - A roughing end mill, finishing end mill, and 90-degree V-bit.
 - Positive tool stepdowns and positive end-mill stepovers.
 
 A 1/4-inch roughing end mill, 1/8-inch finishing end mill, and 1/4-inch
-90-degree V-bit are practical Baseplate starting choices. Filler Plates need a
-narrower V-bit; 1/8 inch is supported there.
+90-degree V-bit are practical socket-only Baseplate starting choices. Baseplate
+magnet geometry may require a smaller V-bit. Filler Plates also need a narrower
+V-bit; 1/8 inch is supported there.
 Always verify tool numbers, feeds, speeds, stepdowns, safe Z, and the 3D preview
 before posting code.
 
@@ -112,8 +115,9 @@ The Baseplate normally creates:
 
 1. `Gridfinity 1 - Rough` — rough pocket with the requested radial and axial
    allowance.
-2. `Gridfinity 2 - Finish` — wall profile when allowance is zero, or a complete
-   finishing pocket when allowance is positive.
+2. `Gridfinity 2 - Finish` — wall profile when zero allowance and the cutter
+   combination can clear the rougher's corner remnant; otherwise a complete
+   finishing pocket.
 3. `Gridfinity 3 - 45deg Socket Chamfers` — 2.15 mm seating chamfer.
 
 With magnets enabled, magnet pockets become operation 3, the socket chamfer
@@ -127,7 +131,13 @@ Baseplate geometry uses these layers:
 - `Gridfinity - Magnet Outer Edge` when magnets are enabled
 - `Gridfinity - Magnet Inner Edge` when magnets are enabled
 
-The Baseplate requires a 90-degree V-bit no larger than 6.35 mm (1/4 inch).
+The Baseplate requires a 90-degree V-bit from 4.3 through 6.35 mm. When magnets
+are enabled, their chamfer must not be deeper than the pocket, holes and
+chamfers must not overlap, and the complete feature must fit the rounded socket
+floor. The gadget also checks the V-bit's swept cone at critical socket depths.
+A valid socket-only V-bit can therefore be rejected for a particular magnet
+diameter, chamfer, or inset; use a smaller V-bit, smaller magnet feature, or move
+the magnet centers inward.
 
 ## Filler Plate setup and geometry
 
@@ -297,9 +307,17 @@ layers or creates filler toolpaths. Common reasons for rejection include:
 - invalid or overlapping magnet geometry.
 
 Every native toolpath uses a layer-based vector selector and can be edited or
-recalculated in VCarve or Aspire. Re-running the gadget clears and replaces its
-named geometry layers, including stale optional layers, but adds another set of
-toolpaths. Delete obsolete toolpaths manually.
+recalculated in VCarve. Re-running the gadget clears and replaces its named
+geometry layers, including stale optional layers, but adds another set of
+toolpaths. Before a rerun, delete existing toolpaths whose names begin with
+`Gridfinity`; it is not necessary to delete the gadget's vector layers. The
+gadget deliberately does not delete existing toolpaths automatically because it
+cannot reliably distinguish renamed or similarly named user-created paths.
+
+If a Filler Plate toolpath fails during creation, or a later Baseplate toolpath
+fails, toolpaths already created by that run are removed. The regenerated
+geometry remains available for inspection. This rollback does not remove paths
+from earlier successful runs.
 
 Always inspect the VCarve 3D preview before machining. For a Filler Plate,
 confirm that the stock surface is the exposed foot face, the lower and upper
@@ -307,6 +325,11 @@ slopes face the correct direction, the vertical wall is 1.8 mm high, the plate
 interface is 4.75 mm deep, seam cleanup appears only between cells, magnets open
 from the exposed face, the outside path is on the correct side, and all four
 tabs remain.
+
+The current Filler Plate has undergone extensive VCarve preview testing. A
+physical cut and fit test has not yet been completed, so version 2.0.0 should be
+treated as preview-tested rather than physically validated. Aspire compatibility
+also remains unverified.
 
 ## Development
 

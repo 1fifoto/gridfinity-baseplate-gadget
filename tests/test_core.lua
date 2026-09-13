@@ -717,6 +717,10 @@ ok = core.validate_magnets(
 assert(ok,
   "the minimum supported Baseplate V-bit should clear standard magnet geometry")
 ok, baseplate_magnet_error = core.validate_magnets(
+  true, 6.2, 2.4, 0.25, 8, 0.4, 42, 42, 3.175, 4.65, 7.449, 4.3)
+assert(not ok and string.find(baseplate_magnet_error, "at least 7.450", 1, true),
+  "Baseplate stock below the deepest magnet cut plus retained base should fail")
+ok, baseplate_magnet_error = core.validate_magnets(
   true, 6.2, 2.4, 0.25, 8, 0.4, 42, 42, 3.175, 4.65, 7.45, 0.4)
 assert(not ok and string.find(baseplate_magnet_error, "too narrow", 1, true),
   "a V-bit too narrow to form a Baseplate magnet chamfer should be rejected")

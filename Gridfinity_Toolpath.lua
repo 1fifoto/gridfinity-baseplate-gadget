@@ -9,7 +9,7 @@ if not GRIDFINITY_TEST_MODE then
 end
 
 local TITLE = "Gridfinity Toolpath"
-local VERSION = "2.0.0-beta.1"
+local VERSION = "2.0.0"
 local REGISTRY_SECTION = "GridfinityToolpathGadget"
 local LAYER_SOCKET_OUTER = "Gridfinity - Socket Outer Edge"
 local LAYER_SOCKET_INNER = "Gridfinity - Socket Inner Edge"
@@ -816,9 +816,13 @@ function Core.validate_magnets(include_magnets, hole_diameter, hole_depth, chamf
     return false, "Magnet base thickness cannot be negative."
   end
   local deepest_magnet_cut = math.max(hole_depth, chamfer)
+  local required_thickness =
+    total_depth + deepest_magnet_cut + base_thickness
   if material_thickness + 0.000001 <
-     total_depth + deepest_magnet_cut + base_thickness then
-    return false, "The material is too thin for the socket, deepest magnet operation, and retained base."
+     required_thickness then
+    return false, string.format(
+      "The material is %.3f mm thick, but the socket, deepest magnet operation, and retained base require at least %.3f mm.",
+      material_thickness, required_thickness)
   end
 
   local outer_radius = hole_diameter * 0.5 + chamfer
@@ -1650,7 +1654,7 @@ function main(script_path)
       "Created a " .. options.columns .. " x " .. options.rows ..
       " Gridfinity Filler Plate with " .. plan.expected_operations ..
       " editable native toolpaths.\n\n" ..
-      "The stock surface is the exposed foot face. Preview every toolpath and verify the recessed plate surface, both foot chamfers, vertical walls, tool numbers, feeds, safe Z, and cut depths before machining.")
+      "The stock surface is the exposed foot face. Preview every toolpath and verify the recessed plate surface, both foot chamfers, internal seam cleanup when applicable, vertical walls, outside cutout, four holding tabs, tool numbers, feeds, safe Z, and cut depths before machining.")
     return true
   end
 
@@ -1712,9 +1716,10 @@ function main(script_path)
   end
 
   local finish_ok
-  if Core.finish_uses_pocket(
+  local baseplate_finish_is_pocket = Core.finish_uses_pocket(
       options.allowance_mm, rough_dia_mm, finish_dia_mm,
-      Core.MACHINED_BOTTOM_RADIUS_MM) then
+      Core.MACHINED_BOTTOM_RADIUS_MM)
+  if baseplate_finish_is_pocket then
     finish_ok = create_pocket_toolpath(
       "Gridfinity 2 - Finish", finish_tool, material, unit,
       LAYER_SOCKET_INNER, 0.0, Core.TOTAL_DEPTH_MM, 0.0)
@@ -1760,6 +1765,9 @@ function main(script_path)
   DisplayMessageBox(
     "Created a " .. options.columns .. " x " .. options.rows .. " Gridfinity baseplate " ..
     "with editable native toolpaths.\n\n" ..
+    "Finishing strategy: " ..
+    (baseplate_finish_is_pocket and "full finishing pocket" or "wall profile") ..
+    ".\n\n" ..
     "Preview every toolpath and verify tool numbers, feeds, safe Z, and cut depths before machining.")
   return true
 end
