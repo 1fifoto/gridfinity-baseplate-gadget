@@ -15,6 +15,10 @@ local LAYER_SOCKET_OUTER = "Gridfinity - Socket Outer Edge"
 local LAYER_SOCKET_INNER = "Gridfinity - Socket Inner Edge"
 local LAYER_MAGNET_OUTER = "Gridfinity - Magnet Outer Edge"
 local LAYER_MAGNET_INNER = "Gridfinity - Magnet Inner Edge"
+local LAYER_FILLER_BOUNDARY = "Gridfinity - Filler Plate Boundary"
+local LAYER_FILLER_TOP = "Gridfinity - Filler Foot Top Edge"
+local LAYER_FILLER_WALL = "Gridfinity - Filler Foot Wall Edge"
+local LAYER_FILLER_BOTTOM = "Gridfinity - Filler Foot Bottom Edge"
 local LEGACY_LAYERS = {
   "Gridfinity - Top Opening",
   "Gridfinity - Vertical Wall",
@@ -48,6 +52,24 @@ Core.MACHINED_BOTTOM_RADIUS_MM = Core.MID_RADIUS_MM
 -- The agreed CNC tooling limit applies to both Baseplate and Filler Plate
 -- chamfers. A 1/2-inch V-bit is not permitted for either output.
 Core.MAX_CHAMFER_TOOL_DIAMETER_MM = 6.35
+
+-- Positive Gridfinity mating-foot profile from spec_draft_willtree8.jpg.
+-- Filler Plates are machined underside-up; these depths run from the plate's
+-- underside toward the exposed bottom face of the foot.
+Core.FILLER_TOP_CLEARANCE_MM = 0.5
+Core.FILLER_TOP_RADIUS_MM = 3.75
+Core.FILLER_UPPER_CHAMFER_MM = 2.15
+Core.FILLER_VERTICAL_WALL_MM = 1.8
+Core.FILLER_LOWER_CHAMFER_MM = 0.8
+Core.FILLER_WALL_DEPTH_MM = Core.FILLER_UPPER_CHAMFER_MM
+Core.FILLER_LOWER_START_DEPTH_MM =
+  Core.FILLER_UPPER_CHAMFER_MM + Core.FILLER_VERTICAL_WALL_MM
+Core.FILLER_TOTAL_DEPTH_MM =
+  Core.FILLER_LOWER_START_DEPTH_MM + Core.FILLER_LOWER_CHAMFER_MM
+Core.FILLER_WALL_RADIUS_MM =
+  Core.FILLER_TOP_RADIUS_MM - Core.FILLER_UPPER_CHAMFER_MM
+Core.FILLER_BOTTOM_RADIUS_MM =
+  Core.FILLER_WALL_RADIUS_MM - Core.FILLER_LOWER_CHAMFER_MM
 
 function Core.to_job_units(value_mm, job_in_mm)
   if job_in_mm then
@@ -90,6 +112,25 @@ end
 function Core.machining_profile_dimensions_at_depth_mm(depth_mm, cell_width_mm, cell_height_mm)
   local machined_depth = math.min(depth_mm, Core.LOWER_START_DEPTH_MM)
   return Core.profile_dimensions_at_depth_mm(machined_depth, cell_width_mm, cell_height_mm)
+end
+
+function Core.filler_profile_dimensions_at_depth_mm(depth_mm, cell_width_mm, cell_height_mm)
+  local d = math.max(0.0, math.min(depth_mm, Core.FILLER_TOTAL_DEPTH_MM))
+  local top_width = cell_width_mm - Core.FILLER_TOP_CLEARANCE_MM
+  local top_height = cell_height_mm - Core.FILLER_TOP_CLEARANCE_MM
+  if d <= Core.FILLER_WALL_DEPTH_MM then
+    return top_width - 2.0 * d, top_height - 2.0 * d,
+           Core.FILLER_TOP_RADIUS_MM - d
+  end
+  if d <= Core.FILLER_LOWER_START_DEPTH_MM then
+    return top_width - 2.0 * Core.FILLER_UPPER_CHAMFER_MM,
+           top_height - 2.0 * Core.FILLER_UPPER_CHAMFER_MM,
+           Core.FILLER_WALL_RADIUS_MM
+  end
+  local lower_depth = d - Core.FILLER_LOWER_START_DEPTH_MM
+  return top_width - 2.0 * (Core.FILLER_UPPER_CHAMFER_MM + lower_depth),
+         top_height - 2.0 * (Core.FILLER_UPPER_CHAMFER_MM + lower_depth),
+         Core.FILLER_WALL_RADIUS_MM - lower_depth
 end
 
 -- Return a conservative centerline region for a circular cutter. When the
@@ -216,6 +257,47 @@ function Core.layout_cells(layout)
     end
   end
   return cells
+end
+
+function Core.filler_geometry(layout)
+  local bottom_width, bottom_height = Core.filler_profile_dimensions_at_depth_mm(
+    Core.FILLER_TOTAL_DEPTH_MM, layout.cell_width_mm, layout.cell_height_mm)
+  if bottom_width + 0.000000001 < 2.0 * Core.FILLER_BOTTOM_RADIUS_MM or
+     bottom_height + 0.000000001 < 2.0 * Core.FILLER_BOTTOM_RADIUS_MM then
+    return nil, "Cell width and height are too small for the Filler Plate mating profile."
+  end
+
+  local geometry = {
+    boundary = {
+      min_x = layout.min_x,
+      min_y = layout.min_y,
+      max_x = layout.max_x,
+      max_y = layout.max_y
+    },
+    cells = {}
+  }
+  for _, cell in ipairs(Core.layout_cells(layout)) do
+    local top_width, top_height, top_radius =
+      Core.filler_profile_dimensions_at_depth_mm(
+        0.0, layout.cell_width_mm, layout.cell_height_mm)
+    local wall_width, wall_height, wall_radius =
+      Core.filler_profile_dimensions_at_depth_mm(
+        Core.FILLER_WALL_DEPTH_MM, layout.cell_width_mm, layout.cell_height_mm)
+    geometry.cells[#geometry.cells + 1] = {
+      row = cell.row,
+      column = cell.column,
+      cx = cell.cx,
+      cy = cell.cy,
+      top = {width = top_width, height = top_height, radius = top_radius},
+      wall = {width = wall_width, height = wall_height, radius = wall_radius},
+      bottom = {
+        width = bottom_width,
+        height = bottom_height,
+        radius = Core.FILLER_BOTTOM_RADIUS_MM
+      }
+    }
+  end
+  return geometry, nil
 end
 
 function Core.finish_uses_pocket(allowance_mm)
@@ -373,6 +455,16 @@ local function rounded_rect(cx, cy, width, height, radius, z)
   c:ArcTo(Point3D(cx - half_w, cy + half_h - r, z), BULGE_90)
   c:LineTo(cx - half_w, cy - half_h + r, z)
   c:ArcTo(Point3D(cx - half_w + r, cy - half_h, z), BULGE_90)
+  return c
+end
+
+local function rectangle(min_x, min_y, max_x, max_y, z)
+  local c = Contour(0.0)
+  c:AppendPoint(min_x, min_y, z)
+  c:LineTo(max_x, min_y, z)
+  c:LineTo(max_x, max_y, z)
+  c:LineTo(min_x, max_y, z)
+  c:LineTo(min_x, min_y, z)
   return c
 end
 
@@ -543,6 +635,49 @@ local function add_geometry(job, options, unit)
       end
   end
 end
+
+local function add_filler_geometry(job, layout, unit)
+  local geometry, geometry_error = Core.filler_geometry(layout)
+  if geometry == nil then
+    return false, geometry_error
+  end
+
+  local manager = job.LayerManager
+  local boundary_layer = manager:GetLayerWithName(LAYER_FILLER_BOUNDARY)
+  local top_layer = manager:GetLayerWithName(LAYER_FILLER_TOP)
+  local wall_layer = manager:GetLayerWithName(LAYER_FILLER_WALL)
+  local bottom_layer = manager:GetLayerWithName(LAYER_FILLER_BOTTOM)
+  clear_layer(boundary_layer)
+  clear_layer(top_layer)
+  clear_layer(wall_layer)
+  clear_layer(bottom_layer)
+  boundary_layer:SetColour(0.35, 0.35, 0.35)
+  top_layer:SetColour(0.10, 0.55, 0.30)
+  wall_layer:SetColour(0.15, 0.35, 0.80)
+  bottom_layer:SetColour(0.85, 0.45, 0.10)
+
+  local boundary = geometry.boundary
+  boundary_layer:AddObject(CreateCadContour(rectangle(
+    boundary.min_x * unit, boundary.min_y * unit,
+    boundary.max_x * unit, boundary.max_y * unit, 0.0)), true)
+
+  for _, cell in ipairs(geometry.cells) do
+    local cx = cell.cx * unit
+    local cy = cell.cy * unit
+    top_layer:AddObject(CreateCadContour(rounded_rect(
+      cx, cy, cell.top.width * unit, cell.top.height * unit,
+      cell.top.radius * unit, 0.0)), true)
+    wall_layer:AddObject(CreateCadContour(rounded_rect(
+      cx, cy, cell.wall.width * unit, cell.wall.height * unit,
+      cell.wall.radius * unit, 0.0)), true)
+    bottom_layer:AddObject(CreateCadContour(rounded_rect(
+      cx, cy, cell.bottom.width * unit, cell.bottom.height * unit,
+      cell.bottom.radius * unit, 0.0)), true)
+  end
+  return true, nil
+end
+
+Core.add_filler_geometry = add_filler_geometry
 
 local function create_position_data(material, unit)
   local box = material.MaterialBox
@@ -782,16 +917,6 @@ function main(script_path)
   -- not force the user to re-enter their parameters on the next invocation.
   save_options(options, rough_tool, finish_tool, vbit_tool)
 
-  if rough_tool == nil or finish_tool == nil or vbit_tool == nil then
-    DisplayMessageBox("Select all three tools before creating the Gridfinity design.")
-    return false
-  end
-
-  if options.output_type == "Filler Plate" then
-    DisplayMessageBox("Filler Plate geometry will be added in the next implementation stage.")
-    return false
-  end
-
   local unit = options.unit
   local design_origin = material.ActualXYOrigin
   local anchor_x_mm = design_origin.x / unit + options.offset_x_mm
@@ -811,6 +936,26 @@ function main(script_path)
     material.Width / unit, material.Height / unit)
   if not grid_ok then
     DisplayMessageBox(grid_error)
+    return false
+  end
+
+  if options.output_type == "Filler Plate" then
+    local filler_ok, filler_error = add_filler_geometry(job, layout, unit)
+    if not filler_ok then
+      DisplayMessageBox(filler_error)
+      return false
+    end
+    job:Refresh2DView()
+    DisplayMessageBox(
+      "Created vector geometry for a " .. options.columns .. " x " .. options.rows ..
+      " Gridfinity Filler Plate.\n\n" ..
+      "No Filler Plate toolpaths or magnet geometry were created. " ..
+      "Inspect the four Filler Plate layers before machining support is added.")
+    return true
+  end
+
+  if rough_tool == nil or finish_tool == nil or vbit_tool == nil then
+    DisplayMessageBox("Select all three tools before creating the Gridfinity design.")
     return false
   end
 

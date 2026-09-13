@@ -97,6 +97,23 @@ near(mw, 37.2, 1e-9, "unchamfered machined bottom width")
 near(mh, 37.2, 1e-9, "unchamfered machined bottom height")
 near(mr, 1.6, 1e-9, "unchamfered machined bottom radius")
 
+near(core.FILLER_TOTAL_DEPTH_MM, 4.75, 1e-9, "filler foot total height")
+local fw, fh, fr = core.filler_profile_dimensions_at_depth_mm(0, 42, 42)
+near(fw, 41.5, 1e-9, "filler top width")
+near(fh, 41.5, 1e-9, "filler top height")
+near(fr, 3.75, 1e-9, "filler top radius")
+fw, fh, fr = core.filler_profile_dimensions_at_depth_mm(2.15, 42, 42)
+near(fw, 37.2, 1e-9, "filler wall width")
+near(fh, 37.2, 1e-9, "filler wall height")
+near(fr, 1.6, 1e-9, "filler wall radius")
+fw, fh, fr = core.filler_profile_dimensions_at_depth_mm(3.95, 42, 42)
+near(fw, 37.2, 1e-9, "filler lower-chamfer start width")
+near(fr, 1.6, 1e-9, "filler lower-chamfer start radius")
+fw, fh, fr = core.filler_profile_dimensions_at_depth_mm(4.75, 42, 42)
+near(fw, 35.6, 1e-9, "filler bottom width")
+near(fh, 35.6, 1e-9, "filler bottom height")
+near(fr, 0.8, 1e-9, "filler bottom radius")
+
 near(core.to_job_units(25.4, false), 1.0, 1e-9, "mm to inch")
 near(core.tool_value_in_job_units(0.25, false, true), 6.35, 1e-9, "inch tool to mm job")
 assert(not core.finish_uses_pocket(0.0), "zero allowance should create a native profile finish")
@@ -153,6 +170,78 @@ near(cells[1].cy, 41, 1e-9, "legacy first-cell center Y")
 layout = assert(core.create_layout(layout_options({origin_from = "Center"}), 10, 20))
 near(layout.grid_min_x, -53, 1e-9, "legacy centered-origin X")
 near(layout.grid_min_y, -22, 1e-9, "legacy centered-origin Y")
+local filler_geometry = assert(core.filler_geometry(layout))
+local shared_cells = core.layout_cells(layout)
+assert(#filler_geometry.cells == #shared_cells,
+  "Filler Plate geometry should consume every shared layout cell")
+for index, filler_cell in ipairs(filler_geometry.cells) do
+  near(filler_cell.cx, shared_cells[index].cx, 1e-9, "shared filler center X")
+  near(filler_cell.cy, shared_cells[index].cy, 1e-9, "shared filler center Y")
+end
+near(filler_geometry.boundary.min_x, layout.min_x, 1e-9, "shared filler boundary min X")
+near(filler_geometry.boundary.max_y, layout.max_y, 1e-9, "shared filler boundary max Y")
+
+local custom_filler_layout = assert(core.create_layout(layout_options({
+  cell_width_mm = 50,
+  cell_height_mm = 40
+}), 0, 0))
+local custom_filler = assert(core.filler_geometry(custom_filler_layout))
+near(custom_filler.cells[1].top.width, 49.5, 1e-9, "custom filler top width")
+near(custom_filler.cells[1].top.height, 39.5, 1e-9, "custom filler top height")
+near(custom_filler.cells[1].bottom.width, 43.6, 1e-9, "custom filler bottom width")
+near(custom_filler.cells[1].bottom.height, 33.6, 1e-9, "custom filler bottom height")
+local undersized_filler, undersized_filler_error = core.filler_geometry({
+  min_x = 0,
+  min_y = 0,
+  max_x = 7,
+  max_y = 7,
+  rows = 1,
+  columns = 1,
+  grid_min_x = 0,
+  grid_min_y = 0,
+  cell_width_mm = 7,
+  cell_height_mm = 7
+})
+assert(undersized_filler == nil and
+       string.find(undersized_filler_error, "too small", 1, true),
+  "cells too small for the nominal bottom radius should be rejected")
+
+Contour = function()
+  return {
+    AppendPoint = function() end,
+    LineTo = function() end,
+    ArcTo = function() end
+  }
+end
+Point3D = function(x, y, z) return {x = x, y = y, z = z} end
+CreateCadContour = function(contour) return contour end
+local filler_layers = {}
+local filler_layer_manager = {
+  GetLayerWithName = function(_, name)
+    local layer = filler_layers[name]
+    if layer == nil then
+      layer = {
+        IsEmpty = true,
+        object_count = 0,
+        SetColour = function() end,
+        AddObject = function(self)
+          self.object_count = self.object_count + 1
+        end
+      }
+      filler_layers[name] = layer
+    end
+    return layer
+  end
+}
+assert(core.add_filler_geometry({LayerManager = filler_layer_manager}, layout, 1.0))
+assert(filler_layers["Gridfinity - Filler Plate Boundary"].object_count == 1,
+  "Filler Plate geometry should create one overall boundary")
+assert(filler_layers["Gridfinity - Filler Foot Top Edge"].object_count == #shared_cells,
+  "Filler Plate geometry should create one top contour per shared cell")
+assert(filler_layers["Gridfinity - Filler Foot Wall Edge"].object_count == #shared_cells,
+  "Filler Plate geometry should create one wall contour per shared cell")
+assert(filler_layers["Gridfinity - Filler Foot Bottom Edge"].object_count == #shared_cells,
+  "Filler Plate geometry should create one bottom contour per shared cell")
 
 local expected_origins = {
   ["Bottom Left"] = {0, 0},
@@ -160,6 +249,13 @@ local expected_origins = {
   ["Top Left"] = {0, -85},
   ["Top Right"] = {-100, -85},
   ["Center"] = {-50, -42.5}
+}
+local expected_grid_origins = {
+  ["Bottom Left"] = {0, 0},
+  ["Bottom Right"] = {-84, 0},
+  ["Top Left"] = {0, -84},
+  ["Top Right"] = {-84, -84},
+  ["Center"] = {-42, -42}
 }
 for origin_from, expected in pairs(expected_origins) do
   layout = assert(core.create_layout(layout_options({
@@ -172,7 +268,23 @@ for origin_from, expected in pairs(expected_origins) do
   near(layout.min_y, expected[2], 1e-9, origin_from .. " requested min Y")
   assert(layout.columns == 2 and layout.rows == 2,
     origin_from .. " should preserve the shared complete-cell count")
+  local expected_grid = expected_grid_origins[origin_from]
+  local origin_filler = assert(core.filler_geometry(layout))
+  near(origin_filler.cells[1].cx, expected_grid[1] + 21, 1e-9,
+    origin_from .. " filler center X")
+  near(origin_filler.cells[1].cy, expected_grid[2] + 21, 1e-9,
+    origin_from .. " filler center Y")
 end
+
+layout = assert(core.create_layout(layout_options({
+  size_mode = "Overall Dimensions",
+  overall_x_mm = 100,
+  overall_y_mm = 85,
+  origin_from = "Bottom Left"
+}), 10, 15))
+local offset_filler = assert(core.filler_geometry(layout))
+near(offset_filler.cells[1].cx, 31, 1e-9, "filler X offset should use shared layout")
+near(offset_filler.cells[1].cy, 36, 1e-9, "filler Y offset should use shared layout")
 
 layout = assert(core.create_layout(layout_options({
   size_mode = "Overall Dimensions",

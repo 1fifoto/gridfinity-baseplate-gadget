@@ -112,6 +112,22 @@ orange and purple magnet layers represent the outer and inner magnet edges.
 Re-running the gadget replaces the vectors on these named layers but adds a new
 set of toolpaths; delete obsolete toolpaths manually.
 
+## Filler Plate vector checkpoint
+
+Selecting `Filler Plate` currently creates vector geometry for inspection only;
+it does not create Filler Plate toolpaths or magnet geometry. The flat plate
+boundary and positive mating-foot contours are placed on four dedicated layers:
+
+- `Gridfinity - Filler Plate Boundary`
+- `Gridfinity - Filler Foot Top Edge`
+- `Gridfinity - Filler Foot Wall Edge`
+- `Gridfinity - Filler Foot Bottom Edge`
+
+The nominal foot follows the willtree8 design reference: 41.5 mm at the plate
+interface, 37.2 mm at the vertical wall, and 35.6 mm at the bottom, with a total
+height of 4.75 mm. Inspect these vectors in VCarve before Filler Plate machining
+operations are implemented.
+
 ## Development
 
 Run the pure geometry tests and Lua syntax check:
