@@ -82,14 +82,25 @@
       document.getElementById('MagnetBaseLabel').innerHTML = filler ? 'Minimum flat-top thickness' : 'Minimum retained base';
       document.getElementById('MachiningDescription').innerHTML = filler
         ? '&mdash; use a 90&deg; V-bit no larger than 4.3 mm so its cone cannot cut into the vertical foot wall.'
-        : '&mdash; use a 90&deg; V-bit no larger than 1/4&quot; (6.35 mm); inch tools are supported.';
+        : '&mdash; use a 90&deg; V-bit from 4.3 mm through 1/4&quot; (6.35 mm); magnet geometry may require a smaller bit.';
+      document.getElementById('AllowanceHint').innerHTML = filler
+        ? 'Rough Clearance is added only when the roughing tool plus twice this allowance fits between foot walls. When included, the rough outside cut leaves this allowance and a finishing profile follows.'
+        : 'Finishing uses a pocket when allowance is positive or when the roughing cutter could leave unreachable corner material; otherwise it uses a wall profile.';
       document.getElementById('IntroText').innerHTML = filler
         ? 'Creates a Filler Plate underside-up with editable native toolpaths. All dimensions are millimeters. The stock surface becomes the exposed foot face; machining proceeds inward through the 0.8 mm lower chamfer, 1.8 mm wall, and 2.15 mm upper chamfer to the recessed plate interface at 4.75 mm. Optional magnet pockets open from the exposed foot face.'
         : 'Creates Gridfinity CNC geometry and editable native toolpaths. All dimensions are millimeters. The machined pocket profile uses a 42 mm &times; 42 mm cell, a 2.15 mm upper chamfer, and a straight wall from 2.15 mm to the 4.65 mm terminal socket depth. The referenced 0.7 mm lower chamfer is currently omitted. Magnet sub-pockets continue below this floor only when enabled.';
     }
+    function updateMagnets() {
+      var readOnly = !document.getElementById('IncludeMagnets').checked;
+      var fields = ['MagnetDiameter', 'MagnetDepth', 'MagnetChamfer', 'MagnetInset', 'MagnetBase'];
+      for (var i = 0; i < fields.length; ++i) {
+        setReadOnly(document.getElementById(fields[i]), readOnly);
+      }
+    }
     function initializeDialog() {
       updateSizing();
       updateOutput();
+      updateMagnets();
     }
   </script>
 </head>
@@ -171,7 +182,7 @@
     <tr>
       <td class="column-left">
         <table class="field-table">
-          <tr><td class="field-label">Include magnet pockets</td><td><input id="IncludeMagnets" type="checkbox"></td></tr>
+          <tr><td class="field-label">Include magnet pockets</td><td><input id="IncludeMagnets" type="checkbox" onclick="updateMagnets()"></td></tr>
           <tr><td class="field-label">Hole diameter</td><td><input class="number" id="MagnetDiameter" type="text"> mm</td></tr>
           <tr><td id="MagnetDepthLabel" class="field-label">Depth below socket floor</td><td><input class="number" id="MagnetDepth" type="text"> mm</td></tr>
         </table>
@@ -211,7 +222,7 @@
         <table class="field-table">
           <tr><td class="field-label">Roughing allowance</td><td><input class="number" id="Allowance" type="text"> mm</td></tr>
         </table>
-        <div class="hint">If the allowance is greater than zero, finishing uses a pocket toolpath. At zero, finishing uses only a profile toolpath.</div>
+        <div id="AllowanceHint" class="hint">Finishing uses a pocket when allowance is positive or when the roughing cutter could leave unreachable corner material; otherwise it uses a wall profile.</div>
       </td>
     </tr>
   </table>

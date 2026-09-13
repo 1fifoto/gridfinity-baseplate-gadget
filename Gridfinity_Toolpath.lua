@@ -9,7 +9,7 @@ if not GRIDFINITY_TEST_MODE then
 end
 
 local TITLE = "Gridfinity Toolpath"
-local VERSION = "1.1.0"
+local VERSION = "2.0.0-beta.1"
 local REGISTRY_SECTION = "GridfinityToolpathGadget"
 local LAYER_SOCKET_OUTER = "Gridfinity - Socket Outer Edge"
 local LAYER_SOCKET_INNER = "Gridfinity - Socket Inner Edge"
@@ -322,8 +322,22 @@ function Core.filler_geometry(layout)
   return geometry, nil
 end
 
-function Core.finish_uses_pocket(allowance_mm)
-  return allowance_mm > 0.000001
+function Core.finish_corner_remnant_mm(rough_diameter_mm, corner_radius_mm)
+  return math.max(0.0, rough_diameter_mm * 0.5 - corner_radius_mm) *
+    (math.sqrt(2.0) - 1.0)
+end
+
+function Core.finish_uses_pocket(allowance_mm, rough_diameter_mm,
+                                 finish_diameter_mm, corner_radius_mm)
+  if allowance_mm > 0.000001 then
+    return true
+  end
+  if rough_diameter_mm == nil or finish_diameter_mm == nil or
+     corner_radius_mm == nil then
+    return false
+  end
+  return Core.finish_corner_remnant_mm(
+    rough_diameter_mm, corner_radius_mm) > finish_diameter_mm + 0.000001
 end
 
 function Core.magnet_outer_diameter_mm(hole_diameter_mm, chamfer_mm)
@@ -777,7 +791,8 @@ end
 
 function Core.validate_magnets(include_magnets, hole_diameter, hole_depth, chamfer,
                                edge_inset, base_thickness, cell_width, cell_height,
-                               finish_diameter, total_depth, material_thickness)
+                               finish_diameter, total_depth, material_thickness,
+                               vbit_diameter)
   if not include_magnets then
     return true, nil
   end
@@ -790,6 +805,9 @@ function Core.validate_magnets(include_magnets, hole_diameter, hole_depth, chamf
   if chamfer < 0.0 or chamfer >= hole_diameter * 0.5 then
     return false, "Magnet-hole chamfer must be non-negative and smaller than the hole radius."
   end
+  if chamfer > hole_depth + 0.000001 then
+    return false, "Magnet-hole chamfer cannot be deeper than the magnet pocket."
+  end
   if edge_inset <= hole_diameter * 0.5 + chamfer or
      edge_inset >= math.min(cell_width, cell_height) * 0.5 then
     return false, "Magnet-hole inset does not keep the chamfer inside each cell."
@@ -797,8 +815,54 @@ function Core.validate_magnets(include_magnets, hole_diameter, hole_depth, chamf
   if base_thickness < 0.0 then
     return false, "Magnet base thickness cannot be negative."
   end
-  if material_thickness + 0.000001 < total_depth + hole_depth + base_thickness then
-    return false, "The material is too thin for the socket, magnet depth, and retained base."
+  local deepest_magnet_cut = math.max(hole_depth, chamfer)
+  if material_thickness + 0.000001 <
+     total_depth + deepest_magnet_cut + base_thickness then
+    return false, "The material is too thin for the socket, deepest magnet operation, and retained base."
+  end
+
+  local outer_radius = hole_diameter * 0.5 + chamfer
+  local center_x = cell_width * 0.5 - edge_inset
+  local center_y = cell_height * 0.5 - edge_inset
+  local floor_width, floor_height, floor_radius =
+    Core.machining_profile_dimensions_at_depth_mm(
+      total_depth, cell_width, cell_height)
+  if not Core.circle_fits_rounded_rect(
+      center_x, center_y, outer_radius,
+      floor_width, floor_height, floor_radius) then
+    return false, "The magnet hole or its chamfer does not fit inside the rounded socket floor."
+  end
+
+  local horizontal_spacing = math.min(
+    2.0 * edge_inset, cell_width - 2.0 * edge_inset)
+  local vertical_spacing = math.min(
+    2.0 * edge_inset, cell_height - 2.0 * edge_inset)
+  if horizontal_spacing + 0.000001 < 2.0 * outer_radius or
+     vertical_spacing + 0.000001 < 2.0 * outer_radius then
+    return false, "Magnet holes or chamfers overlap. Change their inset, diameter, or chamfer."
+  end
+
+  if chamfer > 0.000001 and vbit_diameter ~= nil then
+    if vbit_diameter * 0.5 + 0.000001 < chamfer then
+      return false, "The selected V-bit is too narrow to form the magnet chamfer."
+    end
+    local tip_depth = total_depth + chamfer
+    for _, depth in ipairs({
+      0.0, Core.MID_DEPTH_MM, Core.LOWER_START_DEPTH_MM, total_depth
+    }) do
+      local cutter_radius = math.min(
+        vbit_diameter * 0.5, math.max(0.0, tip_depth - depth))
+      local swept_radius = hole_diameter * 0.5 + cutter_radius
+      local width, height, radius =
+        Core.machining_profile_dimensions_at_depth_mm(
+          depth, cell_width, cell_height)
+      if not Core.circle_fits_rounded_rect(
+          center_x, center_y, swept_radius, width, height, radius) then
+        return false, string.format(
+          "The selected V-bit envelope for the magnet chamfer crosses the socket profile at %.3f mm depth. Choose a smaller V-bit, reduce the magnet diameter/chamfer, or increase the inset.",
+          depth)
+      end
+    end
   end
   return true, nil
 end
@@ -1345,6 +1409,12 @@ local function create_filler_toolpaths(plan, rough_tool, finish_tool, vbit_tool,
   return true, nil
 end
 
+local function delete_created_toolpaths(manager, created_ids)
+  for index = #created_ids, 1, -1 do
+    manager:DeleteToolpathWithId(created_ids[index])
+  end
+end
+
 local function load_options(material)
   local registry = Registry(REGISTRY_SECTION)
   local unit = Core.to_job_units(1.0, material.InMM)
@@ -1607,7 +1677,7 @@ function main(script_path)
     options.include_magnets, options.magnet_diameter_mm, options.magnet_depth_mm,
     options.magnet_chamfer_mm, options.magnet_inset_mm, options.magnet_base_mm,
     options.cell_width_mm, options.cell_height_mm, finish_dia_mm,
-    Core.TOTAL_DEPTH_MM, thickness_mm)
+    Core.TOTAL_DEPTH_MM, thickness_mm, vbit_dia_mm)
   if not magnets_ok then
     DisplayMessageBox(magnets_error)
     return false
@@ -1620,16 +1690,31 @@ function main(script_path)
 
   add_geometry(job, options, unit)
 
-  if not create_pocket_toolpath(
+  local baseplate_manager = ToolpathManager()
+  local baseplate_ids = {}
+  local function retain_baseplate_toolpath(toolpath_id, error_message)
+    if toolpath_id == nil then
+      delete_created_toolpaths(baseplate_manager, baseplate_ids)
+      DisplayMessageBox(error_message ..
+        " Toolpaths created by this run were removed; inspect the generated layers before trying again.")
+      return false
+    end
+    baseplate_ids[#baseplate_ids + 1] = toolpath_id
+    return true
+  end
+
+  if not retain_baseplate_toolpath(create_pocket_toolpath(
       "Gridfinity 1 - Rough", rough_tool, material, unit,
       LAYER_SOCKET_INNER, 0.0, Core.TOTAL_DEPTH_MM - options.allowance_mm,
-      options.allowance_mm) then
-    DisplayMessageBox("Could not create the Gridfinity roughing toolpath.")
+      options.allowance_mm),
+      "Could not create the Gridfinity roughing toolpath.") then
     return false
   end
 
   local finish_ok
-  if Core.finish_uses_pocket(options.allowance_mm) then
+  if Core.finish_uses_pocket(
+      options.allowance_mm, rough_dia_mm, finish_dia_mm,
+      Core.MACHINED_BOTTOM_RADIUS_MM) then
     finish_ok = create_pocket_toolpath(
       "Gridfinity 2 - Finish", finish_tool, material, unit,
       LAYER_SOCKET_INNER, 0.0, Core.TOTAL_DEPTH_MM, 0.0)
@@ -1640,33 +1725,34 @@ function main(script_path)
       Core.TOTAL_DEPTH_MM - Core.MID_DEPTH_MM,
       ProfileParameterData.PROFILE_INSIDE)
   end
-  if not finish_ok then
-    DisplayMessageBox("The roughing path was created, but the finishing path failed.")
+  if not retain_baseplate_toolpath(
+      finish_ok, "Could not create the Gridfinity finishing toolpath.") then
     return false
   end
 
-  if options.include_magnets and not create_pocket_toolpath(
+  if options.include_magnets and not retain_baseplate_toolpath(
+    create_pocket_toolpath(
       "Gridfinity 3 - Magnet Pockets", finish_tool, material, unit,
-      LAYER_MAGNET_INNER, Core.TOTAL_DEPTH_MM, options.magnet_depth_mm, 0.0) then
-    DisplayMessageBox("The socket paths were created, but the magnet-pocket path failed.")
+      LAYER_MAGNET_INNER, Core.TOTAL_DEPTH_MM, options.magnet_depth_mm, 0.0),
+      "Could not create the Gridfinity magnet-pocket toolpath.") then
     return false
   end
 
   local chamfer_number = options.include_magnets and 4 or 3
-  if not create_profile_toolpath(
+  if not retain_baseplate_toolpath(create_profile_toolpath(
       "Gridfinity " .. chamfer_number .. " - 45deg Socket Chamfers",
       vbit_tool, material, unit, LAYER_SOCKET_INNER, 0.0,
-      Core.UPPER_CHAMFER_MM, ProfileParameterData.PROFILE_ON) then
-    DisplayMessageBox("The end-mill paths were created, but the V-bit path failed.")
+      Core.UPPER_CHAMFER_MM, ProfileParameterData.PROFILE_ON),
+      "Could not create the Gridfinity socket-chamfer toolpath.") then
     return false
   end
 
   if options.include_magnets and options.magnet_chamfer_mm > 0.000001 and
-     not create_profile_toolpath(
+     not retain_baseplate_toolpath(create_profile_toolpath(
        "Gridfinity 5 - 45deg Magnet Chamfers", vbit_tool, material, unit,
        LAYER_MAGNET_INNER, Core.TOTAL_DEPTH_MM, options.magnet_chamfer_mm,
-       ProfileParameterData.PROFILE_ON) then
-    DisplayMessageBox("The socket chamfer was created, but the magnet-chamfer path failed.")
+       ProfileParameterData.PROFILE_ON),
+       "Could not create the Gridfinity magnet-chamfer toolpath.") then
     return false
   end
 

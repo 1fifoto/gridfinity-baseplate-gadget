@@ -119,6 +119,13 @@ near(core.from_job_units(1.0, false), 25.4, 1e-9, "inch job value to mm")
 near(core.tool_value_in_job_units(0.25, false, true), 6.35, 1e-9, "inch tool to mm job")
 assert(not core.finish_uses_pocket(0.0), "zero allowance should create a native profile finish")
 assert(core.finish_uses_pocket(0.01), "positive allowance should create a native pocket finish")
+assert(not core.finish_uses_pocket(0.0, 6.35, 3.175, 1.6),
+  "standard cutters should retain the faster profile-only Baseplate finish")
+assert(core.finish_uses_pocket(0.0, 25.4, 3.175, 1.6),
+  "a large rougher should force a Baseplate finishing pocket")
+near(core.finish_corner_remnant_mm(25.4, 1.6),
+  (12.7 - 1.6) * (math.sqrt(2) - 1), 1e-9,
+  "corner-remnant calculation should use the rougher and floor radii")
 near(core.magnet_outer_diameter_mm(6.2, 0.25), 6.7, 1e-9,
   "magnet outer edge should include the chamfer on both sides")
 assert(core.circle_fits_rounded_rect(13, 13, 3.35, 35.6, 35.6, 0.8),
@@ -688,5 +695,30 @@ ok = core.validate_magnets(true, 6.2, 2.4, 0.25, 8, 0.4, 42, 42, 3.175, 4.65, 7.
 assert(ok, "standard magnet parameters should validate")
 ok = core.validate_magnets(true, 6.2, 2.4, 0.25, 8, 0.4, 42, 42, 6.35, 4.65, 7.45)
 assert(not ok, "oversized magnet end mill should fail")
+local baseplate_magnet_error
+ok, baseplate_magnet_error = core.validate_magnets(
+  true, 6.2, 0.2, 0.25, 8, 0.4, 42, 42, 3.175, 4.65, 7.45, 4.3)
+assert(not ok and string.find(baseplate_magnet_error, "deeper", 1, true),
+  "Baseplate magnet chamfers deeper than their pockets should be rejected")
+ok, baseplate_magnet_error = core.validate_magnets(
+  true, 6.2, 2.4, 0.25, 5, 0.4, 42, 42, 3.175, 4.65, 7.45, 4.3)
+assert(not ok and string.find(baseplate_magnet_error, "rounded socket floor", 1, true),
+  "Baseplate magnets outside the rounded socket floor should be rejected")
+ok, baseplate_magnet_error = core.validate_magnets(
+  true, 6.2, 2.4, 0.25, 20, 0.4, 42, 42, 3.175, 4.65, 7.45, 4.3)
+assert(not ok and string.find(baseplate_magnet_error, "overlap", 1, true),
+  "overlapping Baseplate magnets should be rejected")
+ok, baseplate_magnet_error = core.validate_magnets(
+  true, 6.2, 2.4, 0.25, 8, 0.4, 42, 42, 3.175, 4.65, 7.45, 6.35)
+assert(not ok and string.find(baseplate_magnet_error, "envelope", 1, true),
+  "a Baseplate magnet V-bit envelope crossing the socket wall should be rejected")
+ok = core.validate_magnets(
+  true, 6.2, 2.4, 0.25, 8, 0.4, 42, 42, 3.175, 4.65, 7.45, 4.3)
+assert(ok,
+  "the minimum supported Baseplate V-bit should clear standard magnet geometry")
+ok, baseplate_magnet_error = core.validate_magnets(
+  true, 6.2, 2.4, 0.25, 8, 0.4, 42, 42, 3.175, 4.65, 7.45, 0.4)
+assert(not ok and string.find(baseplate_magnet_error, "too narrow", 1, true),
+  "a V-bit too narrow to form a Baseplate magnet chamfer should be rejected")
 
 print("Gridfinity Toolpath core tests passed")
