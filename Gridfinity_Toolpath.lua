@@ -119,9 +119,14 @@ function Core.resolve_size(options)
     if options.overall_x_mm <= 0.0 or options.overall_y_mm <= 0.0 then
       return nil, "Overall X and Overall Y must both be positive."
     end
+    local columns = math.floor(options.overall_x_mm / cell_w + 0.000000001)
+    local rows = math.floor(options.overall_y_mm / cell_h + 0.000000001)
+    if columns < 1 or rows < 1 then
+      return nil, "Overall X and Overall Y must each fit at least one complete cell."
+    end
     return {
-      columns = math.max(1, math.ceil(options.overall_x_mm / cell_w - 0.000000001)),
-      rows = math.max(1, math.ceil(options.overall_y_mm / cell_h - 0.000000001)),
+      columns = columns,
+      rows = rows,
       overall_x_mm = options.overall_x_mm,
       overall_y_mm = options.overall_y_mm
     }, nil
@@ -260,7 +265,7 @@ function Core.validate_tool_geometry(rough_dia, finish_dia, vbit_dia, vbit_angle
     return false, "All selected tools must have a positive diameter."
   end
   if type(vbit_angle) ~= "number" then
-    return false, "The selected V-bit does not provide a valid included angle. Edit or reselect it in the Vectric tool database."
+    return false, "The selected V-bit does not provide a valid angle. Edit or reselect it in the Vectric tool database."
   end
   local smallest_opening = minimum_opening or Core.BOTTOM_OPENING_MM
   if smallest_opening <= 0.0 then
@@ -285,8 +290,8 @@ function Core.validate_tool_geometry(rough_dia, finish_dia, vbit_dia, vbit_angle
   end
   if math.abs(vbit_angle - 90.0) > 0.5 then
     return false, string.format(
-      "The selected V-bit has a %.1f degree included angle. " ..
-      "Change it to a 90 degree included-angle V-bit (45 degrees per side).",
+      "The selected V-bit has a %.1f degree angle. " ..
+      "Change it to a 90 degree V-bit.",
       vbit_angle)
   end
   if vbit_dia > Core.MAX_CHAMFER_TOOL_DIAMETER_MM + 0.000001 then
@@ -626,8 +631,8 @@ local function load_options(material)
   local default_overall_x_mm = first_run and material.Width / unit or columns * cell_width_mm
   local default_overall_y_mm = first_run and material.Height / unit or rows * cell_height_mm
   if first_run then
-    columns = math.max(1, math.ceil(default_overall_x_mm / cell_width_mm - 0.000000001))
-    rows = math.max(1, math.ceil(default_overall_y_mm / cell_height_mm - 0.000000001))
+    columns = math.max(0, math.floor(default_overall_x_mm / cell_width_mm + 0.000000001))
+    rows = math.max(0, math.floor(default_overall_y_mm / cell_height_mm + 0.000000001))
   end
   return {
     output_type = registry:GetString("OutputType", "Baseplate"),
@@ -674,14 +679,22 @@ local function save_options(options, rough_tool, finish_tool, vbit_tool)
   registry:SetDouble("MagnetChamferMM", options.magnet_chamfer_mm)
   registry:SetDouble("MagnetInsetMM", options.magnet_inset_mm)
   registry:SetDouble("MagnetBaseMM", options.magnet_base_mm)
-  rough_tool.ToolDBId:SaveDefaults(REGISTRY_SECTION, "Rough")
-  finish_tool.ToolDBId:SaveDefaults(REGISTRY_SECTION, "Finish")
-  vbit_tool.ToolDBId:SaveDefaults(REGISTRY_SECTION, "VBit")
+  if rough_tool ~= nil and rough_tool.ToolDBId ~= nil then
+    rough_tool.ToolDBId:SaveDefaults(REGISTRY_SECTION, "Rough")
+  end
+  if finish_tool ~= nil and finish_tool.ToolDBId ~= nil then
+    finish_tool.ToolDBId:SaveDefaults(REGISTRY_SECTION, "Finish")
+  end
+  if vbit_tool ~= nil and vbit_tool.ToolDBId ~= nil then
+    vbit_tool.ToolDBId:SaveDefaults(REGISTRY_SECTION, "VBit")
+  end
 end
+
+Core.save_options = save_options
 
 local function show_dialog(script_path, material, options)
   local html_path = "file:" .. path_join(script_path, "Gridfinity_Toolpath.htm")
-  local dialog = HTML_Dialog(false, html_path, 650, 720, TITLE .. " " .. VERSION)
+  local dialog = HTML_Dialog(false, html_path, 970, 890, TITLE .. " " .. VERSION)
   dialog:AddRadioGroup("OutputType", options.output_type == "Filler Plate" and 2 or 1)
   dialog:AddRadioGroup("SizeMode", options.size_mode == "Overall Dimensions" and 1 or 2)
   dialog:AddDoubleField("OverallX", options.overall_x_mm)
@@ -724,10 +737,6 @@ local function show_dialog(script_path, material, options)
   local rough_tool = dialog:GetTool("RoughToolButton")
   local finish_tool = dialog:GetTool("FinishToolButton")
   local vbit_tool = dialog:GetTool("VBitToolButton")
-  if rough_tool == nil or finish_tool == nil or vbit_tool == nil then
-    DisplayMessageBox("Select all three tools before creating the Gridfinity design.")
-    return nil
-  end
   options.output_type = dialog:GetRadioIndex("OutputType") == 2 and "Filler Plate" or "Baseplate"
   options.size_mode = dialog:GetRadioIndex("SizeMode") == 1 and "Overall Dimensions" or "Grid Rows / Columns"
   options.overall_x_mm = dialog:GetDoubleField("OverallX")
@@ -766,6 +775,15 @@ function main(script_path)
   local rough_tool, finish_tool, vbit_tool
   options, rough_tool, finish_tool, vbit_tool = show_dialog(script_path, material, options)
   if options == nil then
+    return false
+  end
+
+  -- Persist every submitted dialog value before validation so an error does
+  -- not force the user to re-enter their parameters on the next invocation.
+  save_options(options, rough_tool, finish_tool, vbit_tool)
+
+  if rough_tool == nil or finish_tool == nil or vbit_tool == nil then
+    DisplayMessageBox("Select all three tools before creating the Gridfinity design.")
     return false
   end
 
@@ -825,7 +843,6 @@ function main(script_path)
     return false
   end
 
-  save_options(options, rough_tool, finish_tool, vbit_tool)
   add_geometry(job, options, unit)
 
   if not create_pocket_toolpath(

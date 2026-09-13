@@ -35,7 +35,7 @@ negative volume removed by CNC tooling.
 - VCarve Pro or Aspire with Gadget support (V12 SDK API)
 - A single-sided flat job with material at least 4.65 mm thick
 - Roughing and finishing flat end mills
-- A 90° included-angle V-bit (its cutting edges are 45° to the material surface)
+- A 90° V-bit
 
 The Vectric tool database supplies each tool's diameter, stepdown, stepover,
 feeds, speeds, and tool number. The gadget supports both metric and inch jobs.
@@ -104,6 +104,9 @@ a GitHub Release and attach a versioned `.vgadget` installer.
    feeds, safe Z, and depths before posting code.
 
 Cell width and height are independently adjustable and default to 42 mm. The
+Overall Dimensions mode generates only complete cells: for example, a 100 mm ×
+85 mm area at the default pitch produces a 2 × 2 pattern. Any unused space is
+placed outside the pattern according to the selected origin. The
 green and blue socket layers represent the outer and inner socket edges; the
 orange and purple magnet layers represent the outer and inner magnet edges.
 Re-running the gadget replaces the vectors on these named layers but adds a new

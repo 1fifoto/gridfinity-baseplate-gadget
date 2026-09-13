@@ -25,6 +25,57 @@ local function layout_options(overrides)
   return options
 end
 
+local saved_registry_values = {}
+Registry = function(section)
+  assert(section == "GridfinityToolpathGadget", "options should use the gadget registry section")
+  return {
+    SetString = function(_, key, value) saved_registry_values[key] = value end,
+    SetInt = function(_, key, value) saved_registry_values[key] = value end,
+    SetDouble = function(_, key, value) saved_registry_values[key] = value end,
+    SetBool = function(_, key, value) saved_registry_values[key] = value end
+  }
+end
+
+local saved_tools = {}
+local function test_tool(label)
+  return {
+    ToolDBId = {
+      SaveDefaults = function(_, section, key)
+        assert(section == "GridfinityToolpathGadget", "tools should use the gadget registry section")
+        saved_tools[key] = label
+      end
+    }
+  }
+end
+
+core.save_options({
+  output_type = "Baseplate",
+  size_mode = "Overall Dimensions",
+  columns = 3,
+  rows = 2,
+  overall_x_mm = -1,
+  overall_y_mm = 84,
+  cell_width_mm = 42,
+  cell_height_mm = 42,
+  origin_from = "Top Right",
+  offset_x_mm = 1.25,
+  offset_y_mm = -2.5,
+  allowance_mm = 0.2,
+  include_magnets = true,
+  magnet_diameter_mm = 6.2,
+  magnet_depth_mm = 2.4,
+  magnet_chamfer_mm = 0.25,
+  magnet_inset_mm = 8,
+  magnet_base_mm = 0.4
+}, test_tool("rough"), nil, test_tool("vbit"))
+assert(saved_registry_values.OverallXMM == -1,
+  "submitted values must be saved even when later validation will reject them")
+assert(saved_registry_values.OriginFrom == "Top Right", "origin should be persisted")
+assert(saved_registry_values.IncludeMagnets, "magnet selection should be persisted")
+assert(saved_tools.Rough == "rough" and saved_tools.VBit == "vbit",
+  "selected tools should be persisted even when another tool is missing")
+assert(saved_tools.Finish == nil, "a missing tool should not prevent parameter persistence")
+
 local w, r = core.profile_at_depth_mm(0)
 near(w, 41.5, 1e-9, "top width")
 near(r, 3.75, 1e-9, "top radius")
@@ -69,16 +120,24 @@ size = assert(core.resolve_size(layout_options({
   overall_x_mm = 100,
   overall_y_mm = 85
 })))
-assert(size.columns == 3, "arbitrary overall X should include the partial edge column")
-assert(size.rows == 3, "arbitrary overall Y should include the partial edge row")
+assert(size.columns == 2, "100 mm should fit two complete 42 mm columns")
+assert(size.rows == 2, "85 mm should fit two complete 42 mm rows")
 
 size = assert(core.resolve_size(layout_options({
   size_mode = "Overall Dimensions",
+  overall_x_mm = 126,
+  overall_y_mm = 84
+})))
+assert(size.columns == 3 and size.rows == 2,
+  "exact overall dimensions should preserve every complete cell")
+
+local undersized, undersized_error = core.resolve_size(layout_options({
+  size_mode = "Overall Dimensions",
   overall_x_mm = 0.001,
   overall_y_mm = 0.001
-})))
-assert(size.columns == 1 and size.rows == 1,
-  "a positive overall size smaller than one cell should still produce one partial cell")
+}))
+assert(undersized == nil and string.find(undersized_error, "complete cell", 1, true),
+  "an overall size smaller than one cell should be rejected")
 
 -- The two original placement modes map exactly to Bottom Left and Center.
 local layout = assert(core.create_layout(layout_options(), 10, 20))
@@ -111,8 +170,8 @@ for origin_from, expected in pairs(expected_origins) do
   }), 0, 0))
   near(layout.min_x, expected[1], 1e-9, origin_from .. " requested min X")
   near(layout.min_y, expected[2], 1e-9, origin_from .. " requested min Y")
-  assert(layout.columns == 3 and layout.rows == 3,
-    origin_from .. " should preserve shared derived grid size")
+  assert(layout.columns == 2 and layout.rows == 2,
+    origin_from .. " should preserve the shared complete-cell count")
 end
 
 layout = assert(core.create_layout(layout_options({
@@ -121,10 +180,11 @@ layout = assert(core.create_layout(layout_options({
   overall_y_mm = 85,
   origin_from = "Bottom Right"
 }), 100, 0))
-near(layout.grid_min_x, -26, 1e-9, "right origin should clip the leftmost column")
+near(layout.grid_min_x, 16, 1e-9, "right origin should place unused width on the left")
 cells = core.layout_cells(layout)
-near(cells[1].clip_min_x, 0, 1e-9, "partial left cell should clip at the requested edge")
-near(cells[3].clip_max_x, 100, 1e-9, "rightmost cell should end at the requested edge")
+assert(#cells == 4, "100 x 85 mm should enumerate a 2 x 2 complete-cell grid")
+near(cells[1].clip_min_x, 16, 1e-9, "left cell should remain complete")
+near(cells[2].clip_max_x, 100, 1e-9, "right cell should end at the requested edge")
 
 local layout_ok = core.validate_layout(layout, 0, 0, 100, 85)
 assert(layout_ok, "arbitrary overall layout should fit its matching job bounds")
@@ -199,10 +259,10 @@ assert(not ok, "one-half inch V-bit should be rejected for Gridfinity chamfers")
 assert(string.find(vbit_error, "1/2 inch V-bit is too large", 1, true),
   "oversized V-bit error should identify the rejected one-half inch tool")
 ok = core.validate_tool_geometry(6.35, 1.5875, 6.35, 45, 0.2, 4.65, 6)
-assert(not ok, "45 degree included-angle bit should fail")
+assert(not ok, "45 degree V-bit should fail")
 ok, vbit_error = core.validate_tool_geometry(6.35, 3.175, 6.35, nil, 0.2, 4.65, 6)
 assert(not ok, "missing V-bit angle should fail without a Lua error")
-assert(string.find(vbit_error, "valid included angle", 1, true), "missing-angle error should explain the problem")
+assert(string.find(vbit_error, "valid angle", 1, true), "missing-angle error should explain the problem")
 ok, vbit_error = core.validate_tool_geometry(6.35, 3.175, 1.4, 90, 0.2, 4.65, 6)
 assert(not ok, "small V-bit should fail the upper-chamfer requirement")
 assert(string.find(vbit_error, "at least 4.3 mm", 1, true), "small V-bit error should explain upper requirement")
