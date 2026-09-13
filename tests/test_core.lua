@@ -115,11 +115,16 @@ near(fh, 35.6, 1e-9, "filler bottom height")
 near(fr, 0.8, 1e-9, "filler bottom radius")
 
 near(core.to_job_units(25.4, false), 1.0, 1e-9, "mm to inch")
+near(core.from_job_units(1.0, false), 25.4, 1e-9, "inch job value to mm")
 near(core.tool_value_in_job_units(0.25, false, true), 6.35, 1e-9, "inch tool to mm job")
 assert(not core.finish_uses_pocket(0.0), "zero allowance should create a native profile finish")
 assert(core.finish_uses_pocket(0.01), "positive allowance should create a native pocket finish")
 near(core.magnet_outer_diameter_mm(6.2, 0.25), 6.7, 1e-9,
   "magnet outer edge should include the chamfer on both sides")
+assert(core.circle_fits_rounded_rect(13, 13, 3.35, 35.6, 35.6, 0.8),
+  "standard filler magnet chamfer should fit inside the foot bottom")
+assert(not core.circle_fits_rounded_rect(16, 16, 3.35, 35.6, 35.6, 0.8),
+  "a circle crossing the rounded foot corner should be rejected")
 
 local grid_w, grid_h = core.grid_size_mm(3, 2, 50, 40)
 near(grid_w, 150, 1e-9, "custom X pitch should determine grid width")
@@ -206,14 +211,19 @@ assert(undersized_filler == nil and
        string.find(undersized_filler_error, "too small", 1, true),
   "cells too small for the nominal bottom radius should be rejected")
 
+local inserted_tab_count = 0
 Contour = function()
   return {
     AppendPoint = function() end,
     LineTo = function() end,
-    ArcTo = function() end
+    ArcTo = function() end,
+    InsertToolpathTabAtPoint = function()
+      inserted_tab_count = inserted_tab_count + 1
+    end
   }
 end
 Point3D = function(x, y, z) return {x = x, y = y, z = z} end
+Point2D = function(x, y) return {x = x, y = y} end
 CreateCadContour = function(contour) return contour end
 local filler_layers = {}
 local filler_layer_manager = {
@@ -231,6 +241,9 @@ local filler_layer_manager = {
       filler_layers[name] = layer
     end
     return layer
+  end,
+  FindLayerWithName = function(_, name)
+    return filler_layers[name]
   end
 }
 assert(core.add_filler_geometry({LayerManager = filler_layer_manager}, layout, 1.0))
@@ -242,6 +255,276 @@ assert(filler_layers["Gridfinity - Filler Foot Wall Edge"].object_count == #shar
   "Filler Plate geometry should create one wall contour per shared cell")
 assert(filler_layers["Gridfinity - Filler Foot Bottom Edge"].object_count == #shared_cells,
   "Filler Plate geometry should create one bottom contour per shared cell")
+
+local filler_magnet_options = {
+  include_magnets = true,
+  magnet_diameter_mm = 6.2,
+  magnet_depth_mm = 2.4,
+  magnet_chamfer_mm = 0.25,
+  magnet_inset_mm = 8,
+  magnet_base_mm = 0.4,
+  cell_width_mm = 42,
+  cell_height_mm = 42
+}
+local filler_magnets = assert(core.filler_magnet_geometry(layout, filler_magnet_options))
+assert(#filler_magnets == #shared_cells * 4,
+  "Filler Plate magnets should be created four times per complete cell")
+near(filler_magnets[1].cx, shared_cells[1].cx - 13, 1e-9,
+  "Filler Plate magnet X should reuse per-cell placement")
+near(filler_magnets[1].cy, shared_cells[1].cy - 13, 1e-9,
+  "Filler Plate magnet Y should reuse per-cell placement")
+near(filler_magnets[1].outer_diameter, 6.7, 1e-9,
+  "Filler Plate magnet outer vector should include the chamfer")
+assert(core.add_filler_geometry(
+  {LayerManager = filler_layer_manager}, layout, 1.0, filler_magnet_options))
+assert(filler_layers["Gridfinity - Magnet Outer Edge"].object_count == #shared_cells * 4,
+  "Filler Plate geometry should create one outer magnet contour per magnet")
+assert(filler_layers["Gridfinity - Magnet Inner Edge"].object_count == #shared_cells * 4,
+  "Filler Plate geometry should create one inner magnet contour per magnet")
+
+local no_filler_magnets = assert(core.filler_magnet_geometry(layout, {
+  include_magnets = false
+}))
+assert(#no_filler_magnets == 0, "disabled Filler Plate magnets should create no geometry")
+
+local custom_filler_magnets = assert(core.filler_magnet_geometry(
+  custom_filler_layout, {
+    include_magnets = true,
+    magnet_diameter_mm = 6.2,
+    magnet_depth_mm = 2.4,
+    magnet_chamfer_mm = 0.25,
+    magnet_inset_mm = 8,
+    magnet_base_mm = 0.4,
+    cell_width_mm = 50,
+    cell_height_mm = 40
+  }))
+near(custom_filler_magnets[1].cx, 8, 1e-9,
+  "custom-pitch Filler Plate magnet should retain its edge inset in X")
+near(custom_filler_magnets[1].cy, 8, 1e-9,
+  "custom-pitch Filler Plate magnet should retain its edge inset in Y")
+
+local margin_magnet_layout = assert(core.create_layout(layout_options({
+  size_mode = "Overall Dimensions",
+  overall_x_mm = 100,
+  overall_y_mm = 85,
+  origin_from = "Top Right"
+}), 100, 85))
+local margin_filler_magnets = assert(core.filler_magnet_geometry(
+  margin_magnet_layout, filler_magnet_options))
+assert(#margin_filler_magnets == 16,
+  "unused margins should not create magnets outside the four complete cells")
+near(margin_filler_magnets[14].cx, 92, 1e-9,
+  "right-origin Filler Plate magnets should align to the shared grid")
+
+local function filler_magnet_validation(overrides)
+  local options = {}
+  for key, value in pairs(filler_magnet_options) do options[key] = value end
+  for key, value in pairs(overrides or {}) do options[key] = value end
+  return core.validate_filler_magnets(options)
+end
+
+local filler_magnets_ok, filler_magnets_error = filler_magnet_validation()
+assert(filler_magnets_ok, "standard Filler Plate magnets should validate")
+filler_magnets_ok, filler_magnets_error = filler_magnet_validation({magnet_inset_mm = 2})
+assert(not filler_magnets_ok and string.find(filler_magnets_error, "foot bottom", 1, true),
+  "Filler Plate magnet chamfers outside the bottom profile should be rejected")
+filler_magnets_ok, filler_magnets_error = filler_magnet_validation({magnet_inset_mm = 20})
+assert(not filler_magnets_ok and string.find(filler_magnets_error, "overlap", 1, true),
+  "overlapping Filler Plate magnets should be rejected")
+filler_magnets_ok, filler_magnets_error = filler_magnet_validation({
+  magnet_depth_mm = 4.76
+})
+assert(not filler_magnets_ok and string.find(filler_magnets_error, "within", 1, true),
+  "Filler Plate magnets must remain within the mating foot")
+filler_magnets_ok, filler_magnets_error = filler_magnet_validation({
+  magnet_depth_mm = 0.2,
+  magnet_chamfer_mm = 0.25
+})
+assert(not filler_magnets_ok and string.find(filler_magnets_error, "deeper", 1, true),
+  "Filler Plate magnet chamfers deeper than their pockets should be rejected")
+
+local filler_plan_options = {
+  allowance_mm = 0.2,
+  include_magnets = false,
+  magnet_diameter_mm = 6.2,
+  magnet_depth_mm = 2.4,
+  magnet_chamfer_mm = 0.25,
+  magnet_inset_mm = 8,
+  magnet_base_mm = 0.4,
+  cell_width_mm = 42,
+  cell_height_mm = 42,
+  layout = layout
+}
+local filler_tools = {
+  rough_diameter_mm = 6.35,
+  finish_diameter_mm = 3.175,
+  vbit_diameter_mm = 3.175,
+  vbit_angle = 90
+}
+local filler_plan = assert(core.build_filler_operation_plan(
+  filler_plan_options, filler_tools, 6.0))
+near(filler_plan.minimum_thickness_mm, 5.4, 1e-9,
+  "multi-cell Filler Plate stock should include the deeper seam pass")
+near(filler_plan.deepest_cut_mm, 6.0, 1e-9,
+  "the outside cutout should be the deepest operation")
+assert(filler_plan.seam_count == 3,
+  "a 3 by 2 plate should have two vertical and one horizontal seam")
+assert(#filler_plan.lower_chamfer_passes == 1,
+  "a 1/8-inch V-bit should cut the lower chamfer in one contour pass")
+assert(#filler_plan.upper_chamfer_passes == 2,
+  "a 1/8-inch V-bit should cut the upper chamfer in two contour passes")
+near(filler_plan.lower_chamfer_passes[1].target_depth_mm, 0.8, 1e-9,
+  "lower chamfer should end at the exposed-face depth")
+near(filler_plan.lower_chamfer_passes[1].width, 37.2, 1e-9,
+  "lower chamfer tool tip should follow the wall contour")
+near(filler_plan.upper_chamfer_passes[2].target_depth_mm, 4.75, 1e-9,
+  "final upper chamfer pass should reach the plate interface")
+near(filler_plan.upper_chamfer_passes[2].width, 41.5, 1e-9,
+  "final upper chamfer tool tip should follow the top contour")
+near(filler_plan.rough_clearance_expansion_mm, 3.375, 1e-9,
+  "rough clearance should expand by cutter radius plus allowance")
+near(filler_plan.finish_clearance_expansion_mm, 1.5875, 1e-9,
+  "finish clearance should expand by cutter radius")
+near(filler_plan.interface_clearance_expansion_mm, 3.175, 1e-9,
+  "interface clearance should provide an accessible perimeter beyond the plate")
+near(filler_plan.wall_clearance_mm, 4.8, 1e-9,
+  "standard wall profiles should leave 4.8 mm clearance")
+assert(not filler_plan.use_rough_clearance,
+  "a quarter-inch rougher plus allowance should not fit the wall clearance")
+assert(filler_plan.expected_operations == 8,
+  "a multi-cell Filler Plate should include seam and outside-cutout operations")
+assert(filler_plan.operations[1].layer_names[1] ==
+       "Gridfinity - Filler Finish Clearance Boundary" and
+       filler_plan.operations[1].layer_names[2] ==
+       "Gridfinity - Filler Foot Wall Edge" and
+       filler_plan.operations[1].cut_depth_mm == 2.6,
+  "finishing clearance should use wall islands and stop at wall depth")
+assert(filler_plan.operations[2].layer_names[1] ==
+       "Gridfinity - Filler Plate Interface Clearance Boundary" and
+       filler_plan.operations[2].layer_names[2] ==
+       "Gridfinity - Filler Foot Top Edge" and
+       filler_plan.operations[2].start_depth_mm == 2.6 and
+       filler_plan.operations[2].cut_depth_mm == 2.15,
+  "plate-interface clearance should protect foot tops and finish at 4.75 mm")
+assert(filler_plan.operations[3].profile_side == "outside" and
+       filler_plan.operations[3].start_depth_mm == 0.8 and
+       filler_plan.operations[3].cut_depth_mm == 1.8,
+  "wall finishing should run outside the wall from 0.8 through 2.6 mm")
+assert(filler_plan.operations[7].label == "Upper Chamfer Seam Pass" and
+       filler_plan.operations[7].layer_names[1] ==
+         "Gridfinity - Filler Upper Chamfer Seam Pass" and
+       filler_plan.operations[7].start_depth_mm == 2.6 and
+       filler_plan.operations[7].cut_depth_mm == 2.4 and
+       filler_plan.operations[7].allow_open,
+  "the final upper-chamfer operation should clean open seams to 5 mm")
+assert(filler_plan.operations[8].label == "Rough Outside Cutout" and
+       filler_plan.operations[8].tool == "rough" and
+       filler_plan.operations[8].profile_side == "outside" and
+       filler_plan.operations[8].cut_depth_mm == 6.0 and
+       filler_plan.operations[8].allowance_mm == 0.0 and
+       filler_plan.operations[8].use_tabs,
+  "the rough tool should cut the boundary through stock with tabs")
+assert(core.add_filler_geometry(
+  {LayerManager = filler_layer_manager}, layout, 1.0,
+  filler_plan_options, filler_plan))
+assert(filler_layers["Gridfinity - Filler Lower Chamfer Pass 1"].object_count ==
+       #shared_cells,
+  "each lower-chamfer pass should have one derived contour per complete cell")
+assert(filler_layers["Gridfinity - Filler Upper Chamfer Pass 2"].object_count ==
+       #shared_cells,
+  "each upper-chamfer pass should have one derived contour per complete cell")
+assert(filler_layers["Gridfinity - Filler Upper Chamfer Seam Pass"].object_count == 3,
+  "the upper-chamfer seam layer should contain every internal grid centerline")
+assert(inserted_tab_count == 4,
+  "the Filler Plate boundary should receive one tab on each side")
+assert(filler_layers["Gridfinity - Filler Rough Clearance Boundary"] == nil and
+       filler_layers["Gridfinity - Filler Finish Clearance Boundary"].object_count == 1 and
+       filler_layers["Gridfinity - Filler Plate Interface Clearance Boundary"].object_count == 1,
+  "both finishing stages should have expanded clearance boundaries")
+local magnet_plan_options = {}
+for key, value in pairs(filler_plan_options) do magnet_plan_options[key] = value end
+magnet_plan_options.include_magnets = true
+local magnet_plan = assert(core.build_filler_operation_plan(
+  magnet_plan_options, filler_tools, 6.0))
+assert(magnet_plan.expected_operations == 10,
+  "magnets should add pocket and chamfer operations to the Filler Plate plan")
+
+local margin_plan_options = {}
+for key, value in pairs(filler_plan_options) do margin_plan_options[key] = value end
+margin_plan_options.layout = margin_magnet_layout
+local margin_plan = assert(core.build_filler_operation_plan(
+  margin_plan_options, filler_tools, 6.0))
+assert(margin_plan.expected_operations == 8 and
+       margin_plan.operations[1].kind == "pocket",
+  "finishing clearance should be retained for arbitrary-size plates")
+assert(margin_plan.operations[1].layer_names[1] ==
+       "Gridfinity - Filler Finish Clearance Boundary" and
+       margin_plan.operations[1].layer_names[2] ==
+       "Gridfinity - Filler Foot Wall Edge",
+  "clearance pockets should use expanded boundaries with wall contours as islands")
+
+local small_rough_tools = {}
+for key, value in pairs(filler_tools) do small_rough_tools[key] = value end
+small_rough_tools.rough_diameter_mm = 3.0
+local small_rough_plan = assert(core.build_filler_operation_plan(
+  filler_plan_options, small_rough_tools, 6.0))
+assert(small_rough_plan.use_rough_clearance and
+       small_rough_plan.expected_operations == 10 and
+       small_rough_plan.operations[1].layer_names[1] ==
+       "Gridfinity - Filler Rough Clearance Boundary",
+  "rough clearance should be generated independently when its tool fits")
+assert(small_rough_plan.operations[9].label == "Rough Outside Cutout" and
+       small_rough_plan.operations[9].allowance_mm == 0.2 and
+       small_rough_plan.operations[10].label == "Finish Outside Cutout" and
+       small_rough_plan.operations[10].tool == "finish" and
+       small_rough_plan.operations[10].use_tabs,
+  "a rough-clearance plan should finish the allowed rough outside cutout")
+
+local invalid_filler_plan, invalid_filler_error = core.build_filler_operation_plan(
+  filler_plan_options, {
+    rough_diameter_mm = 6.35,
+    finish_diameter_mm = 3.175,
+    vbit_diameter_mm = 6.35,
+    vbit_angle = 90
+  }, 6.0)
+assert(invalid_filler_plan == nil and
+       string.find(invalid_filler_error, "vertical wall", 1, true),
+  "a V-bit cone wider than the upper chamfer should be rejected")
+invalid_filler_plan, invalid_filler_error = core.build_filler_operation_plan(
+  filler_plan_options, {
+    rough_diameter_mm = 6.35,
+    finish_diameter_mm = 5.0,
+    vbit_diameter_mm = 3.175,
+    vbit_angle = 90
+  }, 6.0)
+assert(invalid_filler_plan == nil and
+       string.find(invalid_filler_error, "does not fit", 1, true),
+  "a finishing tool wider than the wall clearance should be rejected")
+invalid_filler_plan, invalid_filler_error = core.build_filler_operation_plan(
+  filler_plan_options, filler_tools, 5.399)
+assert(invalid_filler_plan == nil and string.find(invalid_filler_error, "too thin", 1, true),
+  "Filler Plate stock thinner than the foot plus flat top should be rejected")
+assert(core.build_filler_operation_plan(
+  filler_plan_options, filler_tools, 5.4),
+  "Filler Plate stock exactly at the calculated minimum should be accepted")
+assert(core.build_filler_operation_plan(
+  filler_plan_options, filler_tools,
+  core.from_job_units(5.401 / 25.4, false)),
+  "inch-job stock above the calculated minimum should be accepted")
+
+local single_cell_plan_options = {}
+for key, value in pairs(filler_plan_options) do
+  single_cell_plan_options[key] = value
+end
+single_cell_plan_options.layout = assert(core.create_layout(
+  layout_options({columns = 1, rows = 1}), 0, 0))
+local single_cell_plan = assert(core.build_filler_operation_plan(
+  single_cell_plan_options, filler_tools, 5.15))
+assert(single_cell_plan.seam_count == 0 and
+       single_cell_plan.expected_operations == 7,
+  "a one-cell plate should omit the seam but retain its outside cutout")
+near(single_cell_plan.minimum_thickness_mm, 5.15, 1e-9,
+  "a one-cell plate should retain the original minimum stock thickness")
 
 local expected_origins = {
   ["Bottom Left"] = {0, 0},
@@ -299,7 +582,8 @@ near(cells[1].clip_min_x, 16, 1e-9, "left cell should remain complete")
 near(cells[2].clip_max_x, 100, 1e-9, "right cell should end at the requested edge")
 
 local layout_ok = core.validate_layout(layout, 0, 0, 100, 85)
-assert(layout_ok, "arbitrary overall layout should fit its matching job bounds")
+assert(layout_ok,
+  "a plate boundary may exactly fill the job even when helper paths cut air")
 layout_ok = core.validate_layout(layout, 0, 0, 99, 85)
 assert(not layout_ok, "requested physical layout outside the job should fail")
 
@@ -322,6 +606,21 @@ assert(not selector.SelectOpen, "layer selector should not select open vectors")
 assert(not selector.AllowOpen, "layer selector should not allow open vectors")
 assert(selected_layer == "Test Layer", "layer selector should retain its layer name")
 assert(selector_applied, "layer selector must select vectors before initial toolpath calculation")
+
+local open_selector_applied = false
+local open_selector = {
+  AddLayerName = function() end,
+  ApplySelector = function()
+    open_selector_applied = true
+  end
+}
+core.configure_layer_selector(open_selector, "Open Layer", true)
+assert(not open_selector.SelectClosed,
+  "an open-vector selector should not also select closed vectors")
+assert(open_selector.SelectOpen and open_selector.AllowOpen,
+  "the seam profile selector should select and allow open vectors")
+assert(open_selector_applied,
+  "the open-vector selector must be applied before toolpath calculation")
 
 local created_layers = {}
 local existing_layers = {

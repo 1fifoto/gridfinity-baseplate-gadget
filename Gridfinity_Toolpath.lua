@@ -19,6 +19,12 @@ local LAYER_FILLER_BOUNDARY = "Gridfinity - Filler Plate Boundary"
 local LAYER_FILLER_TOP = "Gridfinity - Filler Foot Top Edge"
 local LAYER_FILLER_WALL = "Gridfinity - Filler Foot Wall Edge"
 local LAYER_FILLER_BOTTOM = "Gridfinity - Filler Foot Bottom Edge"
+local LAYER_FILLER_ROUGH_CLEARANCE = "Gridfinity - Filler Rough Clearance Boundary"
+local LAYER_FILLER_FINISH_CLEARANCE = "Gridfinity - Filler Finish Clearance Boundary"
+local LAYER_FILLER_INTERFACE_CLEARANCE = "Gridfinity - Filler Plate Interface Clearance Boundary"
+local LAYER_FILLER_UPPER_SEAM = "Gridfinity - Filler Upper Chamfer Seam Pass"
+local LAYER_FILLER_LOWER_CHAMFER_PREFIX = "Gridfinity - Filler Lower Chamfer Pass "
+local LAYER_FILLER_UPPER_CHAMFER_PREFIX = "Gridfinity - Filler Upper Chamfer Pass "
 local LEGACY_LAYERS = {
   "Gridfinity - Top Opening",
   "Gridfinity - Vertical Wall",
@@ -70,12 +76,28 @@ Core.FILLER_WALL_RADIUS_MM =
   Core.FILLER_TOP_RADIUS_MM - Core.FILLER_UPPER_CHAMFER_MM
 Core.FILLER_BOTTOM_RADIUS_MM =
   Core.FILLER_WALL_RADIUS_MM - Core.FILLER_LOWER_CHAMFER_MM
+-- The Filler Plate is machined with its exposed foot face at the material
+-- surface. Machining depths therefore run in the reverse direction from the
+-- profile dimensions above.
+Core.FILLER_MACHINING_LOWER_END_MM = Core.FILLER_LOWER_CHAMFER_MM
+Core.FILLER_MACHINING_WALL_END_MM =
+  Core.FILLER_LOWER_CHAMFER_MM + Core.FILLER_VERTICAL_WALL_MM
+Core.FILLER_MAX_CHAMFER_PASSES = 20
+Core.FILLER_TAB_LENGTH_MM = 10.0
+Core.FILLER_TAB_THICKNESS_MM = 2.0
 
 function Core.to_job_units(value_mm, job_in_mm)
   if job_in_mm then
     return value_mm
   end
   return value_mm / 25.4
+end
+
+function Core.from_job_units(value, job_in_mm)
+  if job_in_mm then
+    return value
+  end
+  return value * 25.4
 end
 
 function Core.tool_value_in_job_units(value, tool_in_mm, job_in_mm)
@@ -308,6 +330,361 @@ function Core.magnet_outer_diameter_mm(hole_diameter_mm, chamfer_mm)
   return hole_diameter_mm + 2.0 * chamfer_mm
 end
 
+function Core.circle_fits_rounded_rect(center_x, center_y, circle_radius,
+                                       width, height, corner_radius)
+  if circle_radius < 0.0 or width <= 0.0 or height <= 0.0 then
+    return false
+  end
+  local half_width = width * 0.5
+  local half_height = height * 0.5
+  local radius = math.max(0.0, math.min(corner_radius, half_width, half_height))
+  local x = math.abs(center_x)
+  local y = math.abs(center_y)
+  if x + circle_radius > half_width + 0.000000001 or
+     y + circle_radius > half_height + 0.000000001 then
+    return false
+  end
+  local corner_x = half_width - radius
+  local corner_y = half_height - radius
+  if x <= corner_x or y <= corner_y then
+    return true
+  end
+  local dx = x - corner_x
+  local dy = y - corner_y
+  return math.sqrt(dx * dx + dy * dy) + circle_radius <= radius + 0.000000001
+end
+
+function Core.validate_filler_magnets(options)
+  if not options.include_magnets then
+    return true, nil
+  end
+  if options.magnet_diameter_mm <= 0.0 or options.magnet_depth_mm <= 0.0 then
+    return false, "Magnet-hole diameter and depth must be positive."
+  end
+  if options.magnet_chamfer_mm < 0.0 or
+     options.magnet_chamfer_mm >= options.magnet_diameter_mm * 0.5 then
+    return false, "Magnet-hole chamfer must be non-negative and smaller than the hole radius."
+  end
+  if options.magnet_chamfer_mm > options.magnet_depth_mm + 0.000000001 then
+    return false, "Magnet-hole chamfer cannot be deeper than the magnet pocket."
+  end
+  if options.magnet_base_mm < 0.0 then
+    return false, "Minimum Filler Plate flat-top thickness cannot be negative."
+  end
+  if options.magnet_depth_mm > Core.FILLER_TOTAL_DEPTH_MM + 0.000000001 then
+    return false, string.format(
+      "The Filler Plate magnet pocket is %.3f mm deep, but pockets opening from the exposed face must remain within the %.3f mm mating foot.",
+      options.magnet_depth_mm, Core.FILLER_TOTAL_DEPTH_MM)
+  end
+  if options.magnet_inset_mm <= 0.0 or
+     options.magnet_inset_mm >= math.min(
+       options.cell_width_mm, options.cell_height_mm) * 0.5 then
+    return false, "Magnet-hole inset must be positive and less than half the cell size."
+  end
+
+  local outer_radius = Core.magnet_outer_diameter_mm(
+    options.magnet_diameter_mm, options.magnet_chamfer_mm) * 0.5
+  local center_x = options.cell_width_mm * 0.5 - options.magnet_inset_mm
+  local center_y = options.cell_height_mm * 0.5 - options.magnet_inset_mm
+  local bottom_width, bottom_height, bottom_radius =
+    Core.filler_profile_dimensions_at_depth_mm(
+      Core.FILLER_TOTAL_DEPTH_MM,
+      options.cell_width_mm, options.cell_height_mm)
+  if not Core.circle_fits_rounded_rect(
+      center_x, center_y, outer_radius,
+      bottom_width, bottom_height, bottom_radius) then
+    return false, "The magnet hole or its chamfer does not fit inside the Filler Plate foot bottom."
+  end
+
+  local horizontal_spacing = options.cell_width_mm - 2.0 * options.magnet_inset_mm
+  local vertical_spacing = options.cell_height_mm - 2.0 * options.magnet_inset_mm
+  local outer_diameter = outer_radius * 2.0
+  if horizontal_spacing + 0.000000001 < outer_diameter or
+     vertical_spacing + 0.000000001 < outer_diameter then
+    return false, "Filler Plate magnet holes overlap. Increase their edge inset separation or reduce their diameter/chamfer."
+  end
+  return true, nil
+end
+
+function Core.filler_magnet_geometry(layout, options)
+  local ok, validation_error = Core.validate_filler_magnets(options)
+  if not ok then
+    return nil, validation_error
+  end
+  local magnets = {}
+  if not options.include_magnets then
+    return magnets, nil
+  end
+  local dx = layout.cell_width_mm * 0.5 - options.magnet_inset_mm
+  local dy = layout.cell_height_mm * 0.5 - options.magnet_inset_mm
+  for _, cell in ipairs(Core.layout_cells(layout)) do
+    for _, offset in ipairs({
+      {-dx, -dy}, {dx, -dy}, {dx, dy}, {-dx, dy}
+    }) do
+      magnets[#magnets + 1] = {
+        row = cell.row,
+        column = cell.column,
+        cx = cell.cx + offset[1],
+        cy = cell.cy + offset[2],
+        inner_diameter = options.magnet_diameter_mm,
+        outer_diameter = Core.magnet_outer_diameter_mm(
+          options.magnet_diameter_mm, options.magnet_chamfer_mm)
+      }
+    end
+  end
+  return magnets, nil
+end
+
+function Core.filler_chamfer_passes(start_depth_mm, end_depth_mm,
+                                    vbit_diameter_mm, layer_prefix,
+                                    cell_width_mm, cell_height_mm)
+  local cutting_radius = vbit_diameter_mm * 0.5
+  if cutting_radius <= 0.0 then
+    return nil, "The selected Filler Plate V-bit must have a positive diameter."
+  end
+  local passes = {}
+  local previous_depth = start_depth_mm
+  while previous_depth < end_depth_mm - 0.000000001 do
+    local target_depth = math.min(previous_depth + cutting_radius, end_depth_mm)
+    local profile_depth = Core.FILLER_TOTAL_DEPTH_MM - target_depth
+    local width, height, radius = Core.filler_profile_dimensions_at_depth_mm(
+      profile_depth, cell_width_mm, cell_height_mm)
+    passes[#passes + 1] = {
+      layer_name = layer_prefix .. #passes + 1,
+      start_depth_mm = previous_depth,
+      cut_depth_mm = target_depth - previous_depth,
+      target_depth_mm = target_depth,
+      width = width,
+      height = height,
+      radius = radius
+    }
+    if #passes > Core.FILLER_MAX_CHAMFER_PASSES then
+      return nil, "The selected V-bit would require too many Filler Plate chamfer passes. Choose a larger V-bit."
+    end
+    previous_depth = target_depth
+  end
+  return passes, nil
+end
+
+function Core.build_filler_operation_plan(options, tools, material_thickness_mm)
+  if tools.rough_diameter_mm <= 0.0 or tools.finish_diameter_mm <= 0.0 or
+     tools.vbit_diameter_mm <= 0.0 then
+    return nil, "All selected tools must have a positive diameter."
+  end
+  if type(tools.vbit_angle) ~= "number" then
+    return nil, "The selected V-bit does not provide a valid angle. Edit or reselect it in the Vectric tool database."
+  end
+  if math.abs(tools.vbit_angle - 90.0) > 0.5 then
+    return nil, string.format(
+      "The selected V-bit has a %.1f degree angle. Change it to a 90 degree V-bit.",
+      tools.vbit_angle)
+  end
+  if tools.vbit_diameter_mm > Core.MAX_CHAMFER_TOOL_DIAMETER_MM + 0.000001 then
+    return nil, string.format(
+      "The selected V-bit is %.3f mm (%.4f in) in diameter. Filler Plate chamfers require a 90 degree V-bit no larger than 6.35 mm (0.2500 in).",
+      tools.vbit_diameter_mm, tools.vbit_diameter_mm / 25.4)
+  end
+  -- A wider cone on the final upper-chamfer pass would extend above the
+  -- 2.15 mm slope and cut into the finished vertical wall.
+  if tools.vbit_diameter_mm * 0.5 > Core.FILLER_UPPER_CHAMFER_MM + 0.000001 then
+    return nil, string.format(
+      "The selected V-bit is too wide for the Filler Plate upper chamfer without cutting the vertical wall. Choose a 90 degree V-bit no larger than %.3f mm (%.4f in).",
+      2.0 * Core.FILLER_UPPER_CHAMFER_MM,
+      2.0 * Core.FILLER_UPPER_CHAMFER_MM / 25.4)
+  end
+  if options.allowance_mm < 0.0 or options.allowance_mm >= 1.0 then
+    return nil, "Roughing allowance must be between 0 and 1 mm."
+  end
+  if options.magnet_base_mm < 0.0 then
+    return nil, "Minimum Filler Plate flat-top thickness cannot be negative."
+  end
+  local seam_count = 0
+  if options.layout.columns > 1 then
+    seam_count = seam_count + options.layout.columns - 1
+  end
+  if options.layout.rows > 1 then
+    seam_count = seam_count + options.layout.rows - 1
+  end
+  local seam_cleanup_depth_mm = Core.FILLER_TOTAL_DEPTH_MM
+  if seam_count > 0 then
+    if tools.vbit_diameter_mm + 0.000000001 < Core.FILLER_TOP_CLEARANCE_MM then
+      return nil, string.format(
+        "The selected V-bit is too narrow to clear the %.3f mm internal Filler Plate seams. Choose a V-bit at least %.3f mm in diameter.",
+        Core.FILLER_TOP_CLEARANCE_MM, Core.FILLER_TOP_CLEARANCE_MM)
+    end
+    seam_cleanup_depth_mm =
+      Core.FILLER_TOTAL_DEPTH_MM + Core.FILLER_TOP_CLEARANCE_MM * 0.5
+  end
+  local minimum_thickness_mm = seam_cleanup_depth_mm + options.magnet_base_mm
+  if material_thickness_mm + 0.000001 < minimum_thickness_mm then
+    return nil, string.format(
+      "Stock is too thin for a Gridfinity Filler Plate. The current VCarve job stock is %.3f mm thick, but the deepest %.3f mm operation plus %.3f mm minimum flat top requires at least %.3f mm. Increase the VCarve job stock thickness before creating the Filler Plate.",
+      material_thickness_mm, seam_cleanup_depth_mm,
+      options.magnet_base_mm, minimum_thickness_mm)
+  end
+  local magnets_ok, magnets_error = Core.validate_filler_magnets(options)
+  if not magnets_ok then
+    return nil, magnets_error
+  end
+  if options.include_magnets and
+     tools.finish_diameter_mm >= options.magnet_diameter_mm then
+    return nil, "The finishing end mill must be smaller than the Filler Plate magnet-hole diameter."
+  end
+
+  local lower_passes, lower_error = Core.filler_chamfer_passes(
+    0.0, Core.FILLER_MACHINING_LOWER_END_MM,
+    tools.vbit_diameter_mm, LAYER_FILLER_LOWER_CHAMFER_PREFIX,
+    options.cell_width_mm, options.cell_height_mm)
+  if lower_passes == nil then
+    return nil, lower_error
+  end
+  local upper_passes, upper_error = Core.filler_chamfer_passes(
+    Core.FILLER_MACHINING_WALL_END_MM, Core.FILLER_TOTAL_DEPTH_MM,
+    tools.vbit_diameter_mm, LAYER_FILLER_UPPER_CHAMFER_PREFIX,
+    options.cell_width_mm, options.cell_height_mm)
+  if upper_passes == nil then
+    return nil, upper_error
+  end
+
+  local wall_width, wall_height = Core.filler_profile_dimensions_at_depth_mm(
+    Core.FILLER_WALL_DEPTH_MM,
+    options.cell_width_mm, options.cell_height_mm)
+  local wall_clearance_mm = math.min(
+    options.cell_width_mm - wall_width,
+    options.cell_height_mm - wall_height)
+  if tools.finish_diameter_mm > wall_clearance_mm + 0.000000001 then
+    return nil, string.format(
+      "The %.3f mm finishing end mill does not fit the %.3f mm clearance between Filler Plate wall profiles. Choose a finishing end mill no larger than %.3f mm.",
+      tools.finish_diameter_mm, wall_clearance_mm, wall_clearance_mm)
+  end
+  local use_rough_clearance =
+    tools.rough_diameter_mm + 2.0 * options.allowance_mm <=
+      wall_clearance_mm + 0.000000001
+
+  local plan = {
+    lower_chamfer_passes = lower_passes,
+    upper_chamfer_passes = upper_passes,
+    operations = {},
+    minimum_thickness_mm = minimum_thickness_mm,
+    deepest_cut_mm = material_thickness_mm,
+    seam_count = seam_count,
+    seam_cleanup_depth_mm = seam_cleanup_depth_mm,
+    wall_clearance_mm = wall_clearance_mm,
+    use_rough_clearance = use_rough_clearance,
+    rough_clearance_expansion_mm =
+      tools.rough_diameter_mm * 0.5 + options.allowance_mm,
+    finish_clearance_expansion_mm = tools.finish_diameter_mm * 0.5,
+    interface_clearance_expansion_mm = tools.finish_diameter_mm,
+    expected_contours = (use_rough_clearance and 4 or 3) + seam_count +
+      options.layout.rows * options.layout.columns *
+      (3 + #lower_passes + #upper_passes +
+       (options.include_magnets and 8 or 0))
+  }
+  local function add_operation(operation)
+    operation.name = "Gridfinity Filler " .. #plan.operations + 1 .. " - " .. operation.label
+    plan.operations[#plan.operations + 1] = operation
+  end
+  if use_rough_clearance then
+    add_operation({
+      kind = "pocket", label = "Rough Clearance", tool = "rough",
+      layer_names = {LAYER_FILLER_ROUGH_CLEARANCE, LAYER_FILLER_WALL},
+      start_depth_mm = 0.0,
+      cut_depth_mm =
+        Core.FILLER_MACHINING_WALL_END_MM - options.allowance_mm,
+      allowance_mm = options.allowance_mm
+    })
+  end
+  add_operation({
+    kind = "pocket", label = "Wall Clearance", tool = "finish",
+    layer_names = {LAYER_FILLER_FINISH_CLEARANCE, LAYER_FILLER_WALL},
+    start_depth_mm = 0.0,
+    cut_depth_mm = Core.FILLER_MACHINING_WALL_END_MM,
+    allowance_mm = 0.0
+  })
+  add_operation({
+    kind = "pocket", label = "Plate Interface Clearance", tool = "finish",
+    layer_names = {LAYER_FILLER_INTERFACE_CLEARANCE, LAYER_FILLER_TOP},
+    start_depth_mm = Core.FILLER_MACHINING_WALL_END_MM,
+    cut_depth_mm =
+      Core.FILLER_TOTAL_DEPTH_MM - Core.FILLER_MACHINING_WALL_END_MM,
+    allowance_mm = 0.0
+  })
+  add_operation({
+    kind = "profile", label = "Vertical Walls", tool = "finish",
+    layer_names = {LAYER_FILLER_WALL},
+    start_depth_mm = Core.FILLER_MACHINING_LOWER_END_MM,
+    cut_depth_mm = Core.FILLER_VERTICAL_WALL_MM,
+    profile_side = "outside"
+  })
+  if options.include_magnets then
+    add_operation({
+      kind = "pocket", label = "Magnet Pockets", tool = "finish",
+      layer_names = {LAYER_MAGNET_INNER},
+      start_depth_mm = 0.0, cut_depth_mm = options.magnet_depth_mm,
+      allowance_mm = 0.0
+    })
+  end
+  for _, pass in ipairs(lower_passes) do
+    add_operation({
+      kind = "profile", label = "Lower Chamfer Pass " .. _, tool = "vbit",
+      layer_names = {pass.layer_name},
+      start_depth_mm = pass.start_depth_mm,
+      cut_depth_mm = pass.cut_depth_mm,
+      profile_side = "on"
+    })
+  end
+  for _, pass in ipairs(upper_passes) do
+    add_operation({
+      kind = "profile", label = "Upper Chamfer Pass " .. _, tool = "vbit",
+      layer_names = {pass.layer_name},
+      start_depth_mm = pass.start_depth_mm,
+      cut_depth_mm = pass.cut_depth_mm,
+      profile_side = "on"
+    })
+  end
+  if seam_count > 0 then
+    add_operation({
+      kind = "profile", label = "Upper Chamfer Seam Pass", tool = "vbit",
+      layer_names = {LAYER_FILLER_UPPER_SEAM},
+      start_depth_mm = Core.FILLER_MACHINING_WALL_END_MM,
+      cut_depth_mm =
+        seam_cleanup_depth_mm - Core.FILLER_MACHINING_WALL_END_MM,
+      profile_side = "on",
+      allow_open = true
+    })
+  end
+  if options.include_magnets and options.magnet_chamfer_mm > 0.000001 then
+    add_operation({
+      kind = "profile", label = "Magnet Chamfers", tool = "vbit",
+      layer_names = {LAYER_MAGNET_INNER},
+      start_depth_mm = 0.0, cut_depth_mm = options.magnet_chamfer_mm,
+      profile_side = "on"
+    })
+  end
+  add_operation({
+    kind = "profile", label = "Rough Outside Cutout", tool = "rough",
+    layer_names = {LAYER_FILLER_BOUNDARY},
+    start_depth_mm = 0.0,
+    cut_depth_mm = material_thickness_mm,
+    allowance_mm = use_rough_clearance and options.allowance_mm or 0.0,
+    profile_side = "outside",
+    use_tabs = true
+  })
+  if use_rough_clearance then
+    add_operation({
+      kind = "profile", label = "Finish Outside Cutout", tool = "finish",
+      layer_names = {LAYER_FILLER_BOUNDARY},
+      start_depth_mm = 0.0,
+      cut_depth_mm = material_thickness_mm,
+      allowance_mm = 0.0,
+      profile_side = "outside",
+      use_tabs = true
+    })
+  end
+  plan.expected_operations = #plan.operations
+  return plan, nil
+end
+
 function Core.validate_grid(columns, rows, origin_x, origin_y, job_min_x, job_min_y,
                             job_width, job_height, pitch_x, pitch_y)
   if columns < 1 or rows < 1 then
@@ -466,6 +843,22 @@ local function rectangle(min_x, min_y, max_x, max_y, z)
   c:LineTo(min_x, max_y, z)
   c:LineTo(min_x, min_y, z)
   return c
+end
+
+local function open_line(x1, y1, x2, y2, z)
+  local c = Contour(0.0)
+  c:AppendPoint(x1, y1, z)
+  c:LineTo(x2, y2, z)
+  return c
+end
+
+local function add_filler_boundary_tabs(cad_contour, boundary, unit)
+  local mid_x = (boundary.min_x + boundary.max_x) * 0.5 * unit
+  local mid_y = (boundary.min_y + boundary.max_y) * 0.5 * unit
+  cad_contour:InsertToolpathTabAtPoint(Point2D(mid_x, boundary.min_y * unit))
+  cad_contour:InsertToolpathTabAtPoint(Point2D(boundary.max_x * unit, mid_y))
+  cad_contour:InsertToolpathTabAtPoint(Point2D(mid_x, boundary.max_y * unit))
+  cad_contour:InsertToolpathTabAtPoint(Point2D(boundary.min_x * unit, mid_y))
 end
 
 local function rounded_rect_points(cx, cy, width, height, radius)
@@ -636,10 +1029,19 @@ local function add_geometry(job, options, unit)
   end
 end
 
-local function add_filler_geometry(job, layout, unit)
+local function add_filler_geometry(job, layout, unit, options, plan)
   local geometry, geometry_error = Core.filler_geometry(layout)
   if geometry == nil then
     return false, geometry_error
+  end
+
+  local magnets = {}
+  if options ~= nil then
+    local magnet_error
+    magnets, magnet_error = Core.filler_magnet_geometry(layout, options)
+    if magnets == nil then
+      return false, magnet_error
+    end
   end
 
   local manager = job.LayerManager
@@ -647,19 +1049,128 @@ local function add_filler_geometry(job, layout, unit)
   local top_layer = manager:GetLayerWithName(LAYER_FILLER_TOP)
   local wall_layer = manager:GetLayerWithName(LAYER_FILLER_WALL)
   local bottom_layer = manager:GetLayerWithName(LAYER_FILLER_BOTTOM)
+  local rough_clearance_layer, finish_clearance_layer, interface_clearance_layer
+  local upper_seam_layer
+  if plan ~= nil then
+    if plan.use_rough_clearance then
+      rough_clearance_layer = manager:GetLayerWithName(LAYER_FILLER_ROUGH_CLEARANCE)
+    else
+      rough_clearance_layer = manager:FindLayerWithName(LAYER_FILLER_ROUGH_CLEARANCE)
+    end
+    finish_clearance_layer = manager:GetLayerWithName(LAYER_FILLER_FINISH_CLEARANCE)
+    interface_clearance_layer = manager:GetLayerWithName(
+      LAYER_FILLER_INTERFACE_CLEARANCE)
+    if plan.seam_count > 0 then
+      upper_seam_layer = manager:GetLayerWithName(LAYER_FILLER_UPPER_SEAM)
+    else
+      upper_seam_layer = manager:FindLayerWithName(LAYER_FILLER_UPPER_SEAM)
+    end
+  end
+  local magnet_outer_layer, magnet_inner_layer
+  if options ~= nil then
+    magnet_outer_layer, magnet_inner_layer = Core.get_magnet_layers(
+      manager, options.include_magnets)
+  end
+  if plan ~= nil then
+    for index = 1, Core.FILLER_MAX_CHAMFER_PASSES do
+      for _, prefix in ipairs({
+        LAYER_FILLER_LOWER_CHAMFER_PREFIX,
+        LAYER_FILLER_UPPER_CHAMFER_PREFIX
+      }) do
+        local old_layer = manager:FindLayerWithName(prefix .. index)
+        if old_layer ~= nil then
+          clear_layer(old_layer)
+        end
+      end
+    end
+  end
   clear_layer(boundary_layer)
   clear_layer(top_layer)
   clear_layer(wall_layer)
   clear_layer(bottom_layer)
+  if rough_clearance_layer ~= nil then
+    clear_layer(rough_clearance_layer)
+  end
+  if finish_clearance_layer ~= nil then
+    clear_layer(finish_clearance_layer)
+  end
+  if interface_clearance_layer ~= nil then
+    clear_layer(interface_clearance_layer)
+  end
+  if upper_seam_layer ~= nil then
+    clear_layer(upper_seam_layer)
+  end
+  if magnet_outer_layer ~= nil then
+    clear_layer(magnet_outer_layer)
+  end
+  if magnet_inner_layer ~= nil then
+    clear_layer(magnet_inner_layer)
+  end
   boundary_layer:SetColour(0.35, 0.35, 0.35)
   top_layer:SetColour(0.10, 0.55, 0.30)
   wall_layer:SetColour(0.15, 0.35, 0.80)
   bottom_layer:SetColour(0.85, 0.45, 0.10)
+  if plan ~= nil then
+    if plan.use_rough_clearance then
+      rough_clearance_layer:SetColour(0.45, 0.45, 0.45)
+    end
+    finish_clearance_layer:SetColour(0.60, 0.60, 0.60)
+    interface_clearance_layer:SetColour(0.75, 0.75, 0.75)
+    if upper_seam_layer ~= nil and plan.seam_count > 0 then
+      upper_seam_layer:SetColour(0.85, 0.15, 0.70)
+    end
+  end
+  if options ~= nil and options.include_magnets then
+    magnet_outer_layer:SetColour(0.85, 0.45, 0.10)
+    magnet_inner_layer:SetColour(0.55, 0.15, 0.65)
+  end
 
   local boundary = geometry.boundary
-  boundary_layer:AddObject(CreateCadContour(rectangle(
+  local boundary_object = CreateCadContour(rectangle(
     boundary.min_x * unit, boundary.min_y * unit,
-    boundary.max_x * unit, boundary.max_y * unit, 0.0)), true)
+    boundary.max_x * unit, boundary.max_y * unit, 0.0))
+  if plan ~= nil then
+    add_filler_boundary_tabs(boundary_object, boundary, unit)
+  end
+  boundary_layer:AddObject(boundary_object, true)
+  if plan ~= nil then
+    if plan.use_rough_clearance then
+      local rough_expansion = plan.rough_clearance_expansion_mm
+      rough_clearance_layer:AddObject(CreateCadContour(rectangle(
+        (boundary.min_x - rough_expansion) * unit,
+        (boundary.min_y - rough_expansion) * unit,
+        (boundary.max_x + rough_expansion) * unit,
+        (boundary.max_y + rough_expansion) * unit, 0.0)), true)
+    end
+    local finish_expansion = plan.finish_clearance_expansion_mm
+    finish_clearance_layer:AddObject(CreateCadContour(rectangle(
+      (boundary.min_x - finish_expansion) * unit,
+      (boundary.min_y - finish_expansion) * unit,
+      (boundary.max_x + finish_expansion) * unit,
+      (boundary.max_y + finish_expansion) * unit, 0.0)), true)
+    local interface_expansion = plan.interface_clearance_expansion_mm
+    interface_clearance_layer:AddObject(CreateCadContour(rectangle(
+      (boundary.min_x - interface_expansion) * unit,
+      (boundary.min_y - interface_expansion) * unit,
+      (boundary.max_x + interface_expansion) * unit,
+      (boundary.max_y + interface_expansion) * unit, 0.0)), true)
+    if upper_seam_layer ~= nil and plan.seam_count > 0 then
+      local grid_max_x = layout.grid_min_x + layout.columns * layout.cell_width_mm
+      local grid_max_y = layout.grid_min_y + layout.rows * layout.cell_height_mm
+      for column = 1, layout.columns - 1 do
+        local x = layout.grid_min_x + column * layout.cell_width_mm
+        upper_seam_layer:AddObject(CreateCadContour(open_line(
+          x * unit, layout.grid_min_y * unit,
+          x * unit, grid_max_y * unit, 0.0)), true)
+      end
+      for row = 1, layout.rows - 1 do
+        local y = layout.grid_min_y + row * layout.cell_height_mm
+        upper_seam_layer:AddObject(CreateCadContour(open_line(
+          layout.grid_min_x * unit, y * unit,
+          grid_max_x * unit, y * unit, 0.0)), true)
+      end
+    end
+  end
 
   for _, cell in ipairs(geometry.cells) do
     local cx = cell.cx * unit
@@ -673,6 +1184,34 @@ local function add_filler_geometry(job, layout, unit)
     bottom_layer:AddObject(CreateCadContour(rounded_rect(
       cx, cy, cell.bottom.width * unit, cell.bottom.height * unit,
       cell.bottom.radius * unit, 0.0)), true)
+  end
+  for _, magnet in ipairs(magnets) do
+    magnet_outer_layer:AddObject(CreateCadContour(rounded_rect(
+      magnet.cx * unit, magnet.cy * unit,
+      magnet.outer_diameter * unit, magnet.outer_diameter * unit,
+      magnet.outer_diameter * unit * 0.5, 0.0)), true)
+    magnet_inner_layer:AddObject(CreateCadContour(rounded_rect(
+      magnet.cx * unit, magnet.cy * unit,
+      magnet.inner_diameter * unit, magnet.inner_diameter * unit,
+      magnet.inner_diameter * unit * 0.5, 0.0)), true)
+  end
+  if plan ~= nil then
+    for _, passes in ipairs({
+      plan.lower_chamfer_passes,
+      plan.upper_chamfer_passes
+    }) do
+      for _, pass in ipairs(passes) do
+        local layer = manager:GetLayerWithName(pass.layer_name)
+        clear_layer(layer)
+        layer:SetColour(0.70, 0.25, 0.70)
+        for _, cell in ipairs(geometry.cells) do
+          layer:AddObject(CreateCadContour(rounded_rect(
+            cell.cx * unit, cell.cy * unit,
+            pass.width * unit, pass.height * unit,
+            pass.radius * unit, 0.0)), true)
+        end
+      end
+    end
   end
   return true, nil
 end
@@ -689,26 +1228,34 @@ local function create_position_data(material, unit)
   return pos_data
 end
 
-function Core.configure_layer_selector(selector, layer_name)
+function Core.configure_layer_selector(selector, layer_names, allow_open)
   -- GeometrySelector starts inactive. Activating and applying it selects the
   -- vectors needed for the initial calculation; retaining it on the native
   -- toolpath also allows Vectric to find the layer again when recalculating.
   selector.GeometryFilterUsed = true
   selector.OnlyOnLayers = true
-  selector.SelectClosed = true
-  selector.SelectOpen = false
-  selector.AllowOpen = false
-  selector:AddLayerName(layer_name)
+  selector.SelectClosed = allow_open ~= true
+  selector.SelectOpen = allow_open == true
+  selector.AllowOpen = allow_open == true
+  if type(layer_names) == "table" then
+    for _, layer_name in ipairs(layer_names) do
+      selector:AddLayerName(layer_name)
+    end
+  else
+    selector:AddLayerName(layer_names)
+  end
   selector:ApplySelector()
   return selector
 end
 
-local function create_layer_selector(layer_name)
-  return Core.configure_layer_selector(GeometrySelector(), layer_name)
+local function create_layer_selector(layer_names, allow_open)
+  return Core.configure_layer_selector(
+    GeometrySelector(), layer_names, allow_open)
 end
 
-local function create_pocket_toolpath(name, tool, material, unit, layer_name,
-                                      start_depth_mm, cut_depth_mm, allowance_mm)
+local function create_pocket_toolpath(name, tool, material, unit, layer_names,
+                                      start_depth_mm, cut_depth_mm, allowance_mm,
+                                      interactive)
   local pocket_data = PocketParameterData()
   pocket_data.StartDepth = start_depth_mm * unit
   pocket_data.CutDepth = cut_depth_mm * unit
@@ -723,22 +1270,27 @@ local function create_pocket_toolpath(name, tool, material, unit, layer_name,
 
   local toolpath_id = ToolpathManager():CreatePocketingToolpath(
     name, tool, nil, pocket_data, create_position_data(material, unit),
-    create_layer_selector(layer_name), true, true)
-  return toolpath_id ~= nil
+    create_layer_selector(layer_names), true, interactive ~= false)
+  return toolpath_id
 end
 
-local function create_profile_toolpath(name, tool, material, unit, layer_name,
-                                       start_depth_mm, cut_depth_mm, profile_side)
+local function create_profile_toolpath(name, tool, material, unit, layer_names,
+                                       start_depth_mm, cut_depth_mm, profile_side,
+                                       interactive, allow_open, allowance_mm,
+                                       use_tabs)
   local profile_data = ProfileParameterData()
   profile_data.StartDepth = start_depth_mm * unit
   profile_data.CutDepth = cut_depth_mm * unit
   profile_data.CutDirection = ProfileParameterData.CLIMB_DIRECTION
   profile_data.ProfileSide = profile_side
-  profile_data.Allowance = 0.0
+  profile_data.Allowance = (allowance_mm or 0.0) * unit
   profile_data.KeepStartPoints = false
   profile_data.CreateSquareCorners = false
   profile_data.CornerSharpen = false
-  profile_data.UseTabs = false
+  profile_data.UseTabs = use_tabs == true
+  profile_data.TabLength = Core.FILLER_TAB_LENGTH_MM * unit
+  profile_data.TabThickness = Core.FILLER_TAB_THICKNESS_MM * unit
+  profile_data.Use3dTabs = use_tabs == true
   profile_data.ProjectToolpath = false
 
   local ramping_data = RampingData()
@@ -749,9 +1301,48 @@ local function create_profile_toolpath(name, tool, material, unit, layer_name,
 
   local toolpath_id = ToolpathManager():CreateProfilingToolpath(
     name, tool, profile_data, ramping_data, lead_data,
-    create_position_data(material, unit), create_layer_selector(layer_name),
-    true, true)
-  return toolpath_id ~= nil
+    create_position_data(material, unit),
+    create_layer_selector(layer_names, allow_open),
+    true, interactive ~= false)
+  return toolpath_id
+end
+
+local function create_filler_toolpaths(plan, rough_tool, finish_tool, vbit_tool,
+                                       material, unit)
+  local tools = {
+    rough = rough_tool,
+    finish = finish_tool,
+    vbit = vbit_tool
+  }
+  local profile_sides = {
+    outside = ProfileParameterData.PROFILE_OUTSIDE,
+    on = ProfileParameterData.PROFILE_ON
+  }
+  local manager = ToolpathManager()
+  local created_ids = {}
+  for _, operation in ipairs(plan.operations) do
+    local toolpath_id
+    if operation.kind == "pocket" then
+      toolpath_id = create_pocket_toolpath(
+        operation.name, tools[operation.tool], material, unit,
+        operation.layer_names, operation.start_depth_mm,
+        operation.cut_depth_mm, operation.allowance_mm, false)
+    else
+      toolpath_id = create_profile_toolpath(
+        operation.name, tools[operation.tool], material, unit,
+        operation.layer_names, operation.start_depth_mm,
+        operation.cut_depth_mm, profile_sides[operation.profile_side], false,
+        operation.allow_open, operation.allowance_mm, operation.use_tabs)
+    end
+    if toolpath_id == nil then
+      for index = #created_ids, 1, -1 do
+        manager:DeleteToolpathWithId(created_ids[index])
+      end
+      return false, operation.name
+    end
+    created_ids[#created_ids + 1] = toolpath_id
+  end
+  return true, nil
 end
 
 local function load_options(material)
@@ -940,17 +1531,56 @@ function main(script_path)
   end
 
   if options.output_type == "Filler Plate" then
-    local filler_ok, filler_error = add_filler_geometry(job, layout, unit)
+    if rough_tool == nil or finish_tool == nil or vbit_tool == nil then
+      DisplayMessageBox("Select all three tools before creating the Filler Plate.")
+      return false
+    end
+    local rough_dia_mm = Core.tool_value_in_job_units(
+      rough_tool.ToolDia, rough_tool.InMM, true)
+    local finish_dia_mm = Core.tool_value_in_job_units(
+      finish_tool.ToolDia, finish_tool.InMM, true)
+    local vbit_dia_mm = Core.tool_value_in_job_units(
+      vbit_tool.ToolDia, vbit_tool.InMM, true)
+    local thickness_mm = Core.from_job_units(material.Thickness, material.InMM)
+    local plan, plan_error = Core.build_filler_operation_plan(options, {
+      rough_diameter_mm = rough_dia_mm,
+      finish_diameter_mm = finish_dia_mm,
+      vbit_diameter_mm = vbit_dia_mm,
+      vbit_angle = vbit_tool.VBit_Angle
+    }, thickness_mm)
+    if plan == nil then
+      DisplayMessageBox(
+        "Filler Plate settings must change before toolpaths can be created:\n\n" ..
+        plan_error)
+      return false
+    end
+    if rough_tool.Stepdown <= 0.0 or rough_tool.Stepover <= 0.0 or
+       finish_tool.Stepdown <= 0.0 or finish_tool.Stepover <= 0.0 or
+       vbit_tool.Stepdown <= 0.0 then
+      DisplayMessageBox("The selected tools must have positive stepdown values, and the end mills must have positive stepover values.")
+      return false
+    end
+
+    local filler_ok, filler_error = add_filler_geometry(
+      job, layout, unit, options, plan)
     if not filler_ok then
       DisplayMessageBox(filler_error)
       return false
     end
+    local paths_ok, failed_operation = create_filler_toolpaths(
+      plan, rough_tool, finish_tool, vbit_tool, material, unit)
+    if not paths_ok then
+      DisplayMessageBox(
+        "Could not create " .. failed_operation ..
+        ". Toolpaths created by this run were removed; inspect the generated layers before trying again.")
+      return false
+    end
     job:Refresh2DView()
     DisplayMessageBox(
-      "Created vector geometry for a " .. options.columns .. " x " .. options.rows ..
-      " Gridfinity Filler Plate.\n\n" ..
-      "No Filler Plate toolpaths or magnet geometry were created. " ..
-      "Inspect the four Filler Plate layers before machining support is added.")
+      "Created a " .. options.columns .. " x " .. options.rows ..
+      " Gridfinity Filler Plate with " .. plan.expected_operations ..
+      " editable native toolpaths.\n\n" ..
+      "The stock surface is the exposed foot face. Preview every toolpath and verify the recessed plate surface, both foot chamfers, vertical walls, tool numbers, feeds, safe Z, and cut depths before machining.")
     return true
   end
 
@@ -962,7 +1592,7 @@ function main(script_path)
   local rough_dia_mm = Core.tool_value_in_job_units(rough_tool.ToolDia, rough_tool.InMM, true)
   local finish_dia_mm = Core.tool_value_in_job_units(finish_tool.ToolDia, finish_tool.InMM, true)
   local vbit_dia_mm = Core.tool_value_in_job_units(vbit_tool.ToolDia, vbit_tool.InMM, true)
-  local thickness_mm = material.InMM and material.Thickness or material.Thickness * 25.4
+  local thickness_mm = Core.from_job_units(material.Thickness, material.InMM)
   local bottom_w_mm, bottom_h_mm = Core.machining_profile_dimensions_at_depth_mm(
     Core.TOTAL_DEPTH_MM, options.cell_width_mm, options.cell_height_mm)
   local tools_ok, tools_error = Core.validate_tool_geometry(
