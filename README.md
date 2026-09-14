@@ -13,6 +13,8 @@ offsets, and optional four-hole magnet patterns. All values entered in the
 gadget are millimeters; tools may use either millimeter or inch units in the
 Vectric tool database.
 
+![Gridfinity Toolpath 2.0.0 configured to create a ten-column Filler Plate](images/gridfinity-gadget-dialog.png)
+
 ## Requirements
 
 - VCarve Pro with Gadget support (V12 SDK API); Aspire is currently unverified.

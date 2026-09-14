@@ -17,12 +17,15 @@ fi
 test -f "$project_dir/Gridfinity_Toolpath.lua"
 test -f "$project_dir/Gridfinity_Toolpath.htm"
 test -f "$project_dir/README.md"
+test -f "$project_dir/images/gridfinity-gadget-dialog.png"
 
-mkdir -p "$dist_dir" "$stage_dir/$gadget_name"
+mkdir -p "$dist_dir" "$stage_dir/$gadget_name/images"
 cp "$project_dir/Gridfinity_Toolpath.lua" "$stage_dir/$gadget_name/"
 cp "$project_dir/Gridfinity_Toolpath.htm" "$stage_dir/$gadget_name/"
 cp "$project_dir/README.md" "$stage_dir/$gadget_name/"
 cp "$project_dir/LICENSE" "$stage_dir/$gadget_name/LICENSE.txt"
+cp "$project_dir/images/gridfinity-gadget-dialog.png" \
+  "$stage_dir/$gadget_name/images/"
 
 cd "$stage_dir"
 rm -f "$dist_dir/$artifact_name"

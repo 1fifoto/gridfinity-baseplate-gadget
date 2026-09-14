@@ -12,6 +12,7 @@ fingerprint() {
     "$project_dir/Gridfinity_Toolpath.htm" \
     "$project_dir/README.md" \
     "$project_dir/LICENSE" \
+    "$project_dir/images/gridfinity-gadget-dialog.png" \
     "$project_dir/scripts/build-vgadget.sh" | cksum | awk '{print $1 ":" $2}'
 }
 
