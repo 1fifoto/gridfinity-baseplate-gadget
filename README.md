@@ -13,7 +13,7 @@ offsets, and optional four-hole magnet patterns. All values entered in the
 gadget are millimeters; tools may use either millimeter or inch units in the
 Vectric tool database.
 
-![Gridfinity Toolpath 2.0.0 configured to create a ten-column Filler Plate](images/gridfinity-gadget-dialog.png)
+![Gridfinity Toolpath configured to create a ten-column Filler Plate](images/gridfinity-gadget-dialog.png)
 
 ## Requirements
 
@@ -58,7 +58,8 @@ Tags matching `v*` create a GitHub Release with a versioned installer.
 
 ## Shared layout options
 
-Both output types use the same calculated layout.
+Both output types use the same placement rules. Filler Plates allow the plate
+boundary and grid count to be specified independently.
 
 ### Cell size
 
@@ -67,7 +68,7 @@ nominal profiles keep their fixed edge clearances and slopes as the pitch
 changes, so very small custom cells may be rejected when the profile or tools
 no longer fit.
 
-### Size by Grid Rows / Columns
+### Baseplate size by Grid Rows / Columns
 
 The physical boundary is exactly:
 
@@ -78,7 +79,7 @@ height = rows × cell height
 
 Rows and columns must each be between 1 and 100.
 
-### Size by Overall Dimensions
+### Baseplate size by Overall Dimensions
 
 Overall X and Y define the exact physical boundary. Only complete cells are
 generated inside it:
@@ -92,6 +93,17 @@ Each direction must fit at least one complete cell. Unused width or height is
 outside the complete-cell pattern but remains part of the physical boundary.
 For example, 100 × 85 mm at the standard pitch creates an exact 100 × 85 mm
 boundary containing a 2 × 2, 84 × 84 mm foot or socket pattern.
+
+For a Filler Plate, Overall X/Y and Grid Rows/Columns are both editable. The
+overall dimensions set the plate boundary; the counts set the foot pattern.
+The first sizing field edited in the dialog sets the calculation direction:
+editing overall dimensions calculates grid counts, while editing grid counts
+calculates overall dimensions. Later edits to the calculated fields do not
+change the values entered first.
+The complete grid must fit inside the plate. For example, a 307 × 354 mm
+plate can contain 7 columns × 8 rows of 42 mm cells (294 × 336 mm), leaving
+13 mm of width and 18 mm of height outside the pattern. The selected origin
+determines how those margins are placed.
 
 ### Origin and offsets
 
@@ -180,17 +192,17 @@ magnet settings. Operations that apply are created in this order:
 
 | Order | Operation | Tool | Depth and behavior | When included |
 | ---: | --- | --- | --- | --- |
-| 1 | Rough Clearance | Roughing end mill | Pockets around 37.2 mm wall islands. Ends at `2.6 mm − allowance` and leaves the allowance radially. | Only when the rough tool plus twice the allowance fits the wall-to-wall clearance. |
-| 2 | Wall Clearance | Finishing end mill | Pockets from 0 to 2.6 mm around the 37.2 mm wall contours. | Always. |
-| 3 | Plate Interface Clearance | Finishing end mill | Pockets from 2.6 to 4.75 mm around the 41.5 mm foot-top contours. | Always. |
-| 4 | Vertical Walls | Finishing end mill | Outside profile from 0.8 to 2.6 mm, preserving the 1.8 mm wall. | Always. |
+| 1 | Rough Clearance | Roughing end mill | Pockets accessible space around 41.5 mm foot-top islands to 4.75 mm. Leaves the selected allowance radially. | When the rough tool plus twice the allowance fits between foot tops or in an unused full-cell band at the plate edge. |
+| 2 | Wall Clearance | Finishing end mill | Pockets from 0 to 2.6 mm around the 37.2 mm wall contours. When Rough Clearance runs, this pocket is limited to the exact grid rectangle. After complete zero-allowance roughing, it instead profiles the walls. | Always. |
+| 3 | Plate Interface Clearance | Finishing end mill | Pockets from 2.6 to 4.75 mm around the 41.5 mm foot-top contours. When Rough Clearance runs, this pocket is limited to the exact grid rectangle. | Always. |
+| 4 | Vertical Walls | Finishing end mill | Outside profile from 0.8 to 2.6 mm, preserving the 1.8 mm wall. | Omitted when the Wall Clearance operation already profiles the wall. |
 | 5 | Magnet Pockets | Finishing end mill | Pockets inward from the exposed foot face to the selected depth. | Magnets enabled. |
 | 6 | Lower Chamfer Passes | 90° V-bit | One or more profile-on passes spanning 0 to 0.8 mm. | Always. |
 | 7 | Upper Chamfer Passes | 90° V-bit | One or more profile-on passes spanning 2.6 to 4.75 mm. | Always. |
 | 8 | Upper Chamfer Seam Pass | 90° V-bit | Open centerlines reach a 5.0 mm tip depth, allowing the cone to remove the 0.5 mm interface separation without deepening the closed foot contours. | More than one row or column. |
 | 9 | Magnet Chamfers | 90° V-bit | Profile-on pass from the exposed face to the selected chamfer depth. | Magnets enabled and chamfer greater than zero. |
 | 10 | Rough Outside Cutout | Roughing end mill | Outside profile on the true plate boundary through the full stock thickness, with four 3D tabs. | Always and always last unless a finish cutout follows. |
-| 11 | Finish Outside Cutout | Finishing end mill | Outside profile through the full stock thickness using the same tabs. | Only when Rough Clearance was included. |
+| 11 | Finish Outside Cutout | Finishing end mill | Outside profile through the full stock thickness using the same tabs. | Only when Rough Clearance was included and roughing allowance is positive. |
 
 The table's order numbers describe the sequence, not the numeric suffix in every
 generated toolpath name. Omitted conditional operations close the numbering
@@ -206,27 +218,44 @@ and 0.2 mm allowance:
 | 2 × 2, 6.35 mm rougher, magnets off | 8 |
 | 2 × 2, 6.35 mm rougher, magnets on, zero magnet chamfer | 9 |
 | 2 × 2, 6.35 mm rougher, magnets on, positive magnet chamfer | 10 |
-| 2 × 2, 3.0 mm rougher, magnets off | 10 |
+| 2 × 2, 3.0 mm rougher, magnets off | 8 |
 
-The 3.0 mm rougher in the last row fits the clearance, so it adds both Rough
-Clearance and Finish Outside Cutout. The 6.35 mm rougher does neither.
+The 3.0 mm rougher cannot fit between the 41.5 mm foot tops, so it does not
+add Rough Clearance or Finish Outside Cutout on an exact 2 × 2 grid.
 
 ### Clearance behavior and cutter fit
 
-The finish clearance stages are checked independently of Rough Clearance. A
-roughing cutter that cannot enter the wall spacing does not remove either
-finishing operation.
+The finish clearance stages are checked independently of Rough Clearance. If
+the roughing cutter cannot fit between foot tops, it can still clear an unused
+full-cell band at the plate edge where the cutter fits. Wall Clearance pockets
+the narrow gaps the rougher cannot enter. When Rough Clearance runs, both Wall
+Clearance and Plate Interface Clearance use the exact grid rectangle, so they
+do not repeat the wide outer band. Wall, chamfer, seam, and magnet vectors are
+also within the grid. Outside cutouts still follow the physical plate boundary.
 
-For standard 42 mm cells, the 37.2 mm walls leave 4.8 mm between adjacent wall
-profiles. Rough Clearance is included only when:
+With zero roughing allowance, Wall Clearance uses a finishing profile when the
+roughing cutter fits all internal foot-top gaps. This avoids repeating the full
+pocket while still finishing the wall contour. The separate Vertical Walls
+profile is omitted when Wall Clearance already profiles the same walls.
+
+For standard 42 mm cells, the 41.5 mm foot tops leave 0.5 mm between adjacent
+top profiles. Rough Clearance is included when either condition holds:
 
 ```text
-roughing-tool diameter + 2 × roughing allowance ≤ 4.8 mm
+roughing-tool diameter + 2 × roughing allowance ≤ top-to-top clearance
+
+or
+
+unused plate width or height ≥ one cell width or height, respectively
+and roughing-tool diameter + 2 × roughing allowance
+  ≤ the corresponding foot-top-to-plate-edge clearance
 ```
 
-Consequently, a 6.35 mm (1/4-inch) rougher skips Rough Clearance while a 3.175
-mm (1/8-inch) finisher still performs both finish clearance stages. The rougher
-is still used for the outside cutout.
+Consequently, a 6.35 mm (1/4-inch) rougher can run Rough Clearance on a
+307 × 354 mm plate with a centered 7 × 7 grid: the unused 60 mm height is
+split into 30 mm bands above and below the feet. It skips Rough Clearance
+with a 7 × 8 grid, which has no full-cell band. A 3.175 mm (1/8-inch)
+finishing end mill clears the internal wall gaps in both layouts.
 
 The finishing end mill must fit the wall spacing. Tool-specific expanded outer
 boundaries let clearance cutters reach or pass the true plate edge; the plate
@@ -251,10 +280,11 @@ walls, magnets, and chamfers. The roughing tool profiles outside the exact
 physical boundary through the full material thickness. Four 3D tabs—one
 centered on each straight side—are 10 mm long and 2 mm thick.
 
-If Rough Clearance was skipped, the rough cutout has zero allowance and is the
-only cutout operation. If Rough Clearance was included, the rough cutout leaves
-the selected allowance and a finishing-end-mill outside profile follows to
-bring the edge to size. Both cutout paths retain the same tabs.
+At zero roughing allowance, the rough cutout follows the final plate boundary
+and is the only cutout operation, whether or not Rough Clearance ran. With
+positive allowance and Rough Clearance, the rough cutout leaves the selected
+allowance and a finishing-end-mill outside profile brings the edge to size.
+Both cutout paths retain the same tabs when both are generated.
 
 ## Filler Plate magnets
 
@@ -329,7 +359,7 @@ from the exposed face, the outside path is on the correct side, and all four
 tabs remain.
 
 The current Filler Plate has undergone extensive VCarve preview testing. A
-physical cut and fit test has not yet been completed, so version 2.0.0 should be
+physical cut and fit test has not yet been completed, so version 2.0.1 should be
 treated as preview-tested rather than physically validated. Aspire compatibility
 also remains unverified.
 

@@ -9,7 +9,7 @@ if not GRIDFINITY_TEST_MODE then
 end
 
 local TITLE = "Gridfinity Toolpath"
-local VERSION = "2.0.0"
+local VERSION = "2.0.1"
 local REGISTRY_SECTION = "GridfinityToolpathGadget"
 local LAYER_SOCKET_OUTER = "Gridfinity - Socket Outer Edge"
 local LAYER_SOCKET_INNER = "Gridfinity - Socket Inner Edge"
@@ -177,6 +177,24 @@ function Core.resolve_size(options)
   local cell_h = options.cell_height_mm
   if cell_w <= 0.0 or cell_h <= 0.0 then
     return nil, "Cell width and height must both be positive."
+  end
+  if options.output_type == "Filler Plate" then
+    if options.overall_x_mm <= 0.0 or options.overall_y_mm <= 0.0 then
+      return nil, "Filler Plate overall X and Y must both be positive."
+    end
+    if options.columns < 1 or options.rows < 1 then
+      return nil, "Filler Plate rows and columns must both be at least 1."
+    end
+    if options.columns * cell_w > options.overall_x_mm + 0.000000001 or
+       options.rows * cell_h > options.overall_y_mm + 0.000000001 then
+      return nil, "The Filler Plate grid does not fit inside the overall dimensions. Reduce rows or columns, cell size, or increase the plate dimensions."
+    end
+    return {
+      columns = options.columns,
+      rows = options.rows,
+      overall_x_mm = options.overall_x_mm,
+      overall_y_mm = options.overall_y_mm
+    }, nil
   end
   if options.size_mode == "Overall Dimensions" then
     if options.overall_x_mm <= 0.0 or options.overall_y_mm <= 0.0 then
@@ -563,17 +581,43 @@ function Core.build_filler_operation_plan(options, tools, material_thickness_mm)
   local wall_width, wall_height = Core.filler_profile_dimensions_at_depth_mm(
     Core.FILLER_WALL_DEPTH_MM,
     options.cell_width_mm, options.cell_height_mm)
+  local top_width, top_height = Core.filler_profile_dimensions_at_depth_mm(
+    0.0, options.cell_width_mm, options.cell_height_mm)
   local wall_clearance_mm = math.min(
     options.cell_width_mm - wall_width,
     options.cell_height_mm - wall_height)
+  local top_clearance_mm = math.min(
+    options.cell_width_mm - top_width,
+    options.cell_height_mm - top_height)
+  local layout = options.layout
+  local grid_max_x = layout.grid_min_x + layout.columns * options.cell_width_mm
+  local grid_max_y = layout.grid_min_y + layout.rows * options.cell_height_mm
+  local x_perimeter_clearance_mm = math.max(
+    layout.grid_min_x - layout.min_x + (options.cell_width_mm - top_width) * 0.5,
+    layout.max_x - grid_max_x + (options.cell_width_mm - top_width) * 0.5)
+  local y_perimeter_clearance_mm = math.max(
+    layout.grid_min_y - layout.min_y + (options.cell_height_mm - top_height) * 0.5,
+    layout.max_y - grid_max_y + (options.cell_height_mm - top_height) * 0.5)
   if tools.finish_diameter_mm > wall_clearance_mm + 0.000000001 then
     return nil, string.format(
       "The %.3f mm finishing end mill does not fit the %.3f mm clearance between Filler Plate wall profiles. Choose a finishing end mill no larger than %.3f mm.",
       tools.finish_diameter_mm, wall_clearance_mm, wall_clearance_mm)
   end
+  local required_rough_clearance_mm =
+    tools.rough_diameter_mm + 2.0 * options.allowance_mm
   local use_rough_clearance =
-    tools.rough_diameter_mm + 2.0 * options.allowance_mm <=
-      wall_clearance_mm + 0.000000001
+    required_rough_clearance_mm <= top_clearance_mm + 0.000000001 or
+    (layout.overall_x_mm - layout.columns * options.cell_width_mm >=
+       options.cell_width_mm - 0.000000001 and
+     required_rough_clearance_mm <= x_perimeter_clearance_mm + 0.000000001) or
+    (layout.overall_y_mm - layout.rows * options.cell_height_mm >=
+       options.cell_height_mm - 0.000000001 and
+     required_rough_clearance_mm <= y_perimeter_clearance_mm + 0.000000001)
+  local finish_wall_with_profile = use_rough_clearance and
+    options.allowance_mm <= 0.000000001 and
+    tools.rough_diameter_mm <= top_clearance_mm + 0.000000001
+  local finish_outside_cutout = use_rough_clearance and
+    options.allowance_mm > 0.000000001
 
   local plan = {
     lower_chamfer_passes = lower_passes,
@@ -584,12 +628,16 @@ function Core.build_filler_operation_plan(options, tools, material_thickness_mm)
     seam_count = seam_count,
     seam_cleanup_depth_mm = seam_cleanup_depth_mm,
     wall_clearance_mm = wall_clearance_mm,
+    top_clearance_mm = top_clearance_mm,
     use_rough_clearance = use_rough_clearance,
+    finish_wall_with_profile = finish_wall_with_profile,
+    finish_outside_cutout = finish_outside_cutout,
     rough_clearance_expansion_mm =
       tools.rough_diameter_mm * 0.5 + options.allowance_mm,
     finish_clearance_expansion_mm = tools.finish_diameter_mm * 0.5,
     interface_clearance_expansion_mm = tools.finish_diameter_mm,
-    expected_contours = (use_rough_clearance and 4 or 3) + seam_count +
+    expected_contours = (use_rough_clearance and 4 or 3) -
+      (finish_wall_with_profile and 1 or 0) + seam_count +
       options.layout.rows * options.layout.columns *
       (3 + #lower_passes + #upper_passes +
        (options.include_magnets and 8 or 0))
@@ -601,20 +649,29 @@ function Core.build_filler_operation_plan(options, tools, material_thickness_mm)
   if use_rough_clearance then
     add_operation({
       kind = "pocket", label = "Rough Clearance", tool = "rough",
-      layer_names = {LAYER_FILLER_ROUGH_CLEARANCE, LAYER_FILLER_WALL},
+      layer_names = {LAYER_FILLER_ROUGH_CLEARANCE, LAYER_FILLER_TOP},
       start_depth_mm = 0.0,
-      cut_depth_mm =
-        Core.FILLER_MACHINING_WALL_END_MM - options.allowance_mm,
+      cut_depth_mm = Core.FILLER_TOTAL_DEPTH_MM,
       allowance_mm = options.allowance_mm
     })
   end
-  add_operation({
-    kind = "pocket", label = "Wall Clearance", tool = "finish",
-    layer_names = {LAYER_FILLER_FINISH_CLEARANCE, LAYER_FILLER_WALL},
-    start_depth_mm = 0.0,
-    cut_depth_mm = Core.FILLER_MACHINING_WALL_END_MM,
-    allowance_mm = 0.0
-  })
+  if finish_wall_with_profile then
+    add_operation({
+      kind = "profile", label = "Wall Clearance", tool = "finish",
+      layer_names = {LAYER_FILLER_WALL},
+      start_depth_mm = 0.0,
+      cut_depth_mm = Core.FILLER_MACHINING_WALL_END_MM,
+      profile_side = "outside"
+    })
+  else
+    add_operation({
+      kind = "pocket", label = "Wall Clearance", tool = "finish",
+      layer_names = {LAYER_FILLER_FINISH_CLEARANCE, LAYER_FILLER_WALL},
+      start_depth_mm = 0.0,
+      cut_depth_mm = Core.FILLER_MACHINING_WALL_END_MM,
+      allowance_mm = 0.0
+    })
+  end
   add_operation({
     kind = "pocket", label = "Plate Interface Clearance", tool = "finish",
     layer_names = {LAYER_FILLER_INTERFACE_CLEARANCE, LAYER_FILLER_TOP},
@@ -623,13 +680,15 @@ function Core.build_filler_operation_plan(options, tools, material_thickness_mm)
       Core.FILLER_TOTAL_DEPTH_MM - Core.FILLER_MACHINING_WALL_END_MM,
     allowance_mm = 0.0
   })
-  add_operation({
-    kind = "profile", label = "Vertical Walls", tool = "finish",
-    layer_names = {LAYER_FILLER_WALL},
-    start_depth_mm = Core.FILLER_MACHINING_LOWER_END_MM,
-    cut_depth_mm = Core.FILLER_VERTICAL_WALL_MM,
-    profile_side = "outside"
-  })
+  if not finish_wall_with_profile then
+    add_operation({
+      kind = "profile", label = "Vertical Walls", tool = "finish",
+      layer_names = {LAYER_FILLER_WALL},
+      start_depth_mm = Core.FILLER_MACHINING_LOWER_END_MM,
+      cut_depth_mm = Core.FILLER_VERTICAL_WALL_MM,
+      profile_side = "outside"
+    })
+  end
   if options.include_magnets then
     add_operation({
       kind = "pocket", label = "Magnet Pockets", tool = "finish",
@@ -684,7 +743,7 @@ function Core.build_filler_operation_plan(options, tools, material_thickness_mm)
     profile_side = "outside",
     use_tabs = true
   })
-  if use_rough_clearance then
+  if finish_outside_cutout then
     add_operation({
       kind = "profile", label = "Finish Outside Cutout", tool = "finish",
       layer_names = {LAYER_FILLER_BOUNDARY},
@@ -1125,7 +1184,11 @@ local function add_filler_geometry(job, layout, unit, options, plan)
     else
       rough_clearance_layer = manager:FindLayerWithName(LAYER_FILLER_ROUGH_CLEARANCE)
     end
-    finish_clearance_layer = manager:GetLayerWithName(LAYER_FILLER_FINISH_CLEARANCE)
+    if plan.finish_wall_with_profile then
+      finish_clearance_layer = manager:FindLayerWithName(LAYER_FILLER_FINISH_CLEARANCE)
+    else
+      finish_clearance_layer = manager:GetLayerWithName(LAYER_FILLER_FINISH_CLEARANCE)
+    end
     interface_clearance_layer = manager:GetLayerWithName(
       LAYER_FILLER_INTERFACE_CLEARANCE)
     if plan.seam_count > 0 then
@@ -1182,7 +1245,9 @@ local function add_filler_geometry(job, layout, unit, options, plan)
     if plan.use_rough_clearance then
       rough_clearance_layer:SetColour(0.45, 0.45, 0.45)
     end
-    finish_clearance_layer:SetColour(0.60, 0.60, 0.60)
+    if finish_clearance_layer ~= nil and not plan.finish_wall_with_profile then
+      finish_clearance_layer:SetColour(0.60, 0.60, 0.60)
+    end
     interface_clearance_layer:SetColour(0.75, 0.75, 0.75)
     if upper_seam_layer ~= nil and plan.seam_count > 0 then
       upper_seam_layer:SetColour(0.85, 0.15, 0.70)
@@ -1202,6 +1267,14 @@ local function add_filler_geometry(job, layout, unit, options, plan)
   end
   boundary_layer:AddObject(boundary_object, true)
   if plan ~= nil then
+    local grid_boundary = {
+      min_x = layout.grid_min_x,
+      min_y = layout.grid_min_y,
+      max_x = layout.grid_min_x + layout.columns * layout.cell_width_mm,
+      max_y = layout.grid_min_y + layout.rows * layout.cell_height_mm
+    }
+    local clearance_boundary = plan.use_rough_clearance and grid_boundary or
+      boundary
     if plan.use_rough_clearance then
       local rough_expansion = plan.rough_clearance_expansion_mm
       rough_clearance_layer:AddObject(CreateCadContour(rectangle(
@@ -1210,18 +1283,22 @@ local function add_filler_geometry(job, layout, unit, options, plan)
         (boundary.max_x + rough_expansion) * unit,
         (boundary.max_y + rough_expansion) * unit, 0.0)), true)
     end
-    local finish_expansion = plan.finish_clearance_expansion_mm
-    finish_clearance_layer:AddObject(CreateCadContour(rectangle(
-      (boundary.min_x - finish_expansion) * unit,
-      (boundary.min_y - finish_expansion) * unit,
-      (boundary.max_x + finish_expansion) * unit,
-      (boundary.max_y + finish_expansion) * unit, 0.0)), true)
-    local interface_expansion = plan.interface_clearance_expansion_mm
+    if not plan.finish_wall_with_profile then
+      local finish_expansion = plan.use_rough_clearance and 0.0 or
+        plan.finish_clearance_expansion_mm
+      finish_clearance_layer:AddObject(CreateCadContour(rectangle(
+        (clearance_boundary.min_x - finish_expansion) * unit,
+        (clearance_boundary.min_y - finish_expansion) * unit,
+        (clearance_boundary.max_x + finish_expansion) * unit,
+        (clearance_boundary.max_y + finish_expansion) * unit, 0.0)), true)
+    end
+    local interface_expansion = plan.use_rough_clearance and 0.0 or
+      plan.interface_clearance_expansion_mm
     interface_clearance_layer:AddObject(CreateCadContour(rectangle(
-      (boundary.min_x - interface_expansion) * unit,
-      (boundary.min_y - interface_expansion) * unit,
-      (boundary.max_x + interface_expansion) * unit,
-      (boundary.max_y + interface_expansion) * unit, 0.0)), true)
+      (clearance_boundary.min_x - interface_expansion) * unit,
+      (clearance_boundary.min_y - interface_expansion) * unit,
+      (clearance_boundary.max_x + interface_expansion) * unit,
+      (clearance_boundary.max_y + interface_expansion) * unit, 0.0)), true)
     if upper_seam_layer ~= nil and plan.seam_count > 0 then
       local grid_max_x = layout.grid_min_x + layout.columns * layout.cell_width_mm
       local grid_max_y = layout.grid_min_y + layout.rows * layout.cell_height_mm

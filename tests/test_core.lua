@@ -168,6 +168,33 @@ local undersized, undersized_error = core.resolve_size(layout_options({
 assert(undersized == nil and string.find(undersized_error, "complete cell", 1, true),
   "an overall size smaller than one cell should be rejected")
 
+local filler_options = layout_options({
+  output_type = "Filler Plate",
+  size_mode = "Grid Rows / Columns",
+  columns = 7,
+  rows = 8,
+  overall_x_mm = 307,
+  overall_y_mm = 354
+})
+size = assert(core.resolve_size(filler_options))
+assert(size.columns == 7 and size.rows == 8,
+  "filler grid counts should remain independent of plate dimensions")
+near(size.overall_x_mm, 307, 1e-9, "filler plate width")
+near(size.overall_y_mm, 354, 1e-9, "filler plate height")
+local filler_layout = assert(core.create_layout(filler_options, 0, 0))
+near(filler_layout.max_x, 307, 1e-9, "filler physical right edge")
+near(filler_layout.max_y, 354, 1e-9, "filler physical top edge")
+assert(#core.layout_cells(filler_layout) == 56, "filler grid should have 56 cells")
+local oversized_filler, oversized_filler_error = core.resolve_size(layout_options({
+  output_type = "Filler Plate",
+  columns = 8,
+  rows = 8,
+  overall_x_mm = 307,
+  overall_y_mm = 354
+}))
+assert(oversized_filler == nil and string.find(oversized_filler_error, "does not fit", 1, true),
+  "a filler grid wider than the plate should be rejected")
+
 -- The two original placement modes map exactly to Bottom Left and Center.
 local layout = assert(core.create_layout(layout_options(), 10, 20))
 near(layout.grid_min_x, 10, 1e-9, "legacy positive-origin X")
@@ -220,14 +247,18 @@ assert(undersized_filler == nil and
 
 local inserted_tab_count = 0
 Contour = function()
-  return {
-    AppendPoint = function() end,
-    LineTo = function() end,
-    ArcTo = function() end,
-    InsertToolpathTabAtPoint = function()
-      inserted_tab_count = inserted_tab_count + 1
-    end
-  }
+  local contour = {points = {}}
+  function contour:AppendPoint(x, y)
+    self.points[#self.points + 1] = {x = x, y = y}
+  end
+  function contour:LineTo(x, y)
+    self.points[#self.points + 1] = {x = x, y = y}
+  end
+  function contour:ArcTo() end
+  function contour:InsertToolpathTabAtPoint()
+    inserted_tab_count = inserted_tab_count + 1
+  end
+  return contour
 end
 Point3D = function(x, y, z) return {x = x, y = y, z = z} end
 Point2D = function(x, y) return {x = x, y = y} end
@@ -241,8 +272,9 @@ local filler_layer_manager = {
         IsEmpty = true,
         object_count = 0,
         SetColour = function() end,
-        AddObject = function(self)
+        AddObject = function(self, object)
           self.object_count = self.object_count + 1
+          self.last_object = object
         end
       }
       filler_layers[name] = layer
@@ -448,6 +480,11 @@ assert(filler_layers["Gridfinity - Filler Rough Clearance Boundary"] == nil and
        filler_layers["Gridfinity - Filler Finish Clearance Boundary"].object_count == 1 and
        filler_layers["Gridfinity - Filler Plate Interface Clearance Boundary"].object_count == 1,
   "both finishing stages should have expanded clearance boundaries")
+local no_rough_interface_boundary = filler_layers[
+  "Gridfinity - Filler Plate Interface Clearance Boundary"].last_object.points
+near(no_rough_interface_boundary[1].x,
+  layout.min_x - filler_plan.interface_clearance_expansion_mm, 1e-9,
+  "without roughing, interface clearance should still cover the plate edge")
 local magnet_plan_options = {}
 for key, value in pairs(filler_plan_options) do magnet_plan_options[key] = value end
 magnet_plan_options.include_magnets = true
@@ -463,29 +500,145 @@ local margin_plan = assert(core.build_filler_operation_plan(
   margin_plan_options, filler_tools, 6.0))
 assert(margin_plan.expected_operations == 8 and
        margin_plan.operations[1].kind == "pocket",
-  "finishing clearance should be retained for arbitrary-size plates")
+  "ordinary edge margins should retain finishing clearance only")
 assert(margin_plan.operations[1].layer_names[1] ==
        "Gridfinity - Filler Finish Clearance Boundary" and
        margin_plan.operations[1].layer_names[2] ==
        "Gridfinity - Filler Foot Wall Edge",
-  "clearance pockets should use expanded boundaries with wall contours as islands")
+  "finishing clearance should use expanded boundaries with wall contours as islands")
+
+for _, row_count in ipairs({7, 8}) do
+  local large_plate_layout = assert(core.create_layout(layout_options({
+    output_type = "Filler Plate", columns = 7, rows = row_count,
+    overall_x_mm = 307, overall_y_mm = 354, origin_from = "Center"
+  }), 0, 0))
+  local large_plate_options = {}
+  for key, value in pairs(filler_plan_options) do large_plate_options[key] = value end
+  large_plate_options.layout = large_plate_layout
+  local large_plate_plan = assert(core.build_filler_operation_plan(
+    large_plate_options, filler_tools, 19.0))
+  if row_count == 7 then
+    near(large_plate_layout.grid_min_y - large_plate_layout.min_y, 30, 1e-9,
+      "7-row grid should have a 30 mm bottom band")
+    near(large_plate_layout.max_y -
+      (large_plate_layout.grid_min_y + row_count * 42), 30, 1e-9,
+      "7-row grid should have a 30 mm top band")
+    assert(large_plate_plan.use_rough_clearance and
+           large_plate_plan.finish_outside_cutout and
+           large_plate_plan.operations[#large_plate_plan.operations].label ==
+             "Finish Outside Cutout" and
+           large_plate_plan.operations[1].label == "Rough Clearance" and
+           large_plate_plan.operations[1].cut_depth_mm == 4.75 and
+           large_plate_plan.operations[1].layer_names[2] ==
+             "Gridfinity - Filler Foot Top Edge" and
+           large_plate_plan.operations[2].label == "Wall Clearance" and
+           large_plate_plan.operations[2].kind == "pocket" and
+           large_plate_plan.operations[2].layer_names[1] ==
+             "Gridfinity - Filler Finish Clearance Boundary" and
+           large_plate_plan.operations[2].layer_names[2] ==
+             "Gridfinity - Filler Foot Wall Edge",
+      "a centered 7 by 7 grid should rough around the top and bottom bands")
+    assert(core.add_filler_geometry(
+      {LayerManager = filler_layer_manager}, large_plate_layout, 1.0,
+      large_plate_options, large_plate_plan))
+    assert(filler_layers["Gridfinity - Filler Rough Clearance Boundary"].object_count == 1,
+      "the centered 7 by 7 plate should generate a rough clearance boundary")
+    for _, layer_name in ipairs({
+      "Gridfinity - Filler Finish Clearance Boundary",
+      "Gridfinity - Filler Plate Interface Clearance Boundary"
+    }) do
+      local pocket_boundary = filler_layers[layer_name].last_object.points
+      near(pocket_boundary[1].x, large_plate_layout.grid_min_x, 1e-9,
+        layer_name .. " left boundary should be the grid edge")
+      near(pocket_boundary[1].y, large_plate_layout.grid_min_y, 1e-9,
+        layer_name .. " bottom boundary should be the grid edge")
+      near(pocket_boundary[3].x,
+        large_plate_layout.grid_min_x + 7 * large_plate_layout.cell_width_mm,
+        1e-9, layer_name .. " right boundary should be the grid edge")
+      near(pocket_boundary[3].y,
+        large_plate_layout.grid_min_y + 7 * large_plate_layout.cell_height_mm,
+        1e-9, layer_name .. " top boundary should be the grid edge")
+    end
+    local cutout_boundary = filler_layers[
+      "Gridfinity - Filler Plate Boundary"].last_object.points
+    near(cutout_boundary[1].x, large_plate_layout.min_x, 1e-9,
+      "cutout should retain the physical plate boundary")
+    near(cutout_boundary[3].y, large_plate_layout.max_y, 1e-9,
+      "cutout should retain the physical plate boundary")
+  else
+    assert(not large_plate_plan.use_rough_clearance and
+           large_plate_plan.operations[1].label == "Wall Clearance",
+      "a centered 7 by 8 grid should use Wall Clearance only")
+  end
+end
 
 local small_rough_tools = {}
 for key, value in pairs(filler_tools) do small_rough_tools[key] = value end
 small_rough_tools.rough_diameter_mm = 3.0
 local small_rough_plan = assert(core.build_filler_operation_plan(
   filler_plan_options, small_rough_tools, 6.0))
-assert(small_rough_plan.use_rough_clearance and
-       small_rough_plan.expected_operations == 10 and
-       small_rough_plan.operations[1].layer_names[1] ==
-       "Gridfinity - Filler Rough Clearance Boundary",
-  "rough clearance should be generated independently when its tool fits")
-assert(small_rough_plan.operations[9].label == "Rough Outside Cutout" and
-       small_rough_plan.operations[9].allowance_mm == 0.2 and
-       small_rough_plan.operations[10].label == "Finish Outside Cutout" and
-       small_rough_plan.operations[10].tool == "finish" and
-       small_rough_plan.operations[10].use_tabs,
-  "a rough-clearance plan should finish the allowed rough outside cutout")
+assert(not small_rough_plan.use_rough_clearance and
+       small_rough_plan.expected_operations == 8,
+  "a 3 mm rougher should not fit the 0.5 mm gap between foot tops")
+
+local zero_allowance_options = {}
+for key, value in pairs(filler_plan_options) do zero_allowance_options[key] = value end
+zero_allowance_options.allowance_mm = 0.0
+local very_small_rough_tools = {}
+for key, value in pairs(filler_tools) do very_small_rough_tools[key] = value end
+very_small_rough_tools.rough_diameter_mm = 0.4
+local zero_allowance_plan = assert(core.build_filler_operation_plan(
+  zero_allowance_options, very_small_rough_tools, 6.0))
+assert(zero_allowance_plan.use_rough_clearance and
+       zero_allowance_plan.finish_wall_with_profile and
+       not zero_allowance_plan.finish_outside_cutout and
+       zero_allowance_plan.operations[#zero_allowance_plan.operations].label ==
+         "Rough Outside Cutout" and
+       zero_allowance_plan.operations[1].cut_depth_mm == 4.75 and
+       zero_allowance_plan.operations[1].layer_names[2] ==
+         "Gridfinity - Filler Foot Top Edge" and
+       zero_allowance_plan.operations[2].label == "Wall Clearance" and
+       zero_allowance_plan.operations[2].kind == "profile" and
+       zero_allowance_plan.operations[2].profile_side == "outside" and
+       zero_allowance_plan.operations[2].layer_names[1] ==
+         "Gridfinity - Filler Foot Wall Edge",
+  "zero-allowance full roughing should finish the wall with a profile")
+for _, operation in ipairs(zero_allowance_plan.operations) do
+  assert(operation.label ~= "Vertical Walls",
+    "wall finishing profile should replace the overlapping vertical-wall profile")
+end
+assert(core.add_filler_geometry(
+  {LayerManager = filler_layer_manager}, layout, 1.0,
+  zero_allowance_options, zero_allowance_plan))
+assert(filler_layers["Gridfinity - Filler Rough Clearance Boundary"].object_count == 2,
+  "a rougher that fits between foot tops should generate a rough boundary")
+
+local insufficient_clearance_options = {}
+for key, value in pairs(zero_allowance_options) do
+  insufficient_clearance_options[key] = value
+end
+insufficient_clearance_options.allowance_mm = 0.1
+local insufficient_clearance_plan = assert(core.build_filler_operation_plan(
+  insufficient_clearance_options, very_small_rough_tools, 6.0))
+assert(not insufficient_clearance_plan.use_rough_clearance,
+  "roughing diameter plus twice allowance must fit the top-to-top gap")
+
+local wide_margin_options = {}
+for key, value in pairs(zero_allowance_options) do wide_margin_options[key] = value end
+wide_margin_options.layout = assert(core.create_layout(layout_options({
+  output_type = "Filler Plate", columns = 7, rows = 7,
+  overall_x_mm = 307, overall_y_mm = 354
+}), 0, 0))
+local perimeter_only_plan = assert(core.build_filler_operation_plan(
+  wide_margin_options, filler_tools, 19.0))
+assert(perimeter_only_plan.use_rough_clearance and
+       not perimeter_only_plan.finish_wall_with_profile and
+       not perimeter_only_plan.finish_outside_cutout and
+       perimeter_only_plan.operations[1].label == "Rough Clearance" and
+       perimeter_only_plan.operations[2].kind == "pocket" and
+       perimeter_only_plan.operations[#perimeter_only_plan.operations].label ==
+         "Rough Outside Cutout",
+  "wide perimeter roughing should pocket narrow gaps within the grid")
 
 local invalid_filler_plan, invalid_filler_error = core.build_filler_operation_plan(
   filler_plan_options, {

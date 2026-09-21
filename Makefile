@@ -6,6 +6,7 @@ build:
 test:
 	lua tests/test_core.lua
 	luac -p Gridfinity_Toolpath.lua tests/test_core.lua
+	node tests/test_dialog_sizing.js
 
 watch:
 	./scripts/watch-vgadget.sh run

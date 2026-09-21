@@ -28,6 +28,9 @@ jobs:
           lua tests/test_core.lua
           luac -p Gridfinity_Toolpath.lua tests/test_core.lua
 
+      - name: Test dialog sizing
+        run: node tests/test_dialog_sizing.js
+
       - name: Build installable VGadget
         shell: bash
         run: |
