@@ -97,22 +97,22 @@ near(mw, 37.2, 1e-9, "unchamfered machined bottom width")
 near(mh, 37.2, 1e-9, "unchamfered machined bottom height")
 near(mr, 1.6, 1e-9, "unchamfered machined bottom radius")
 
-near(core.FILLER_TOTAL_DEPTH_MM, 4.75, 1e-9, "filler foot total height")
-local fw, fh, fr = core.filler_profile_dimensions_at_depth_mm(0, 42, 42)
-near(fw, 41.5, 1e-9, "filler top width")
-near(fh, 41.5, 1e-9, "filler top height")
-near(fr, 3.75, 1e-9, "filler top radius")
-fw, fh, fr = core.filler_profile_dimensions_at_depth_mm(2.15, 42, 42)
-near(fw, 37.2, 1e-9, "filler wall width")
-near(fh, 37.2, 1e-9, "filler wall height")
-near(fr, 1.6, 1e-9, "filler wall radius")
-fw, fh, fr = core.filler_profile_dimensions_at_depth_mm(3.95, 42, 42)
-near(fw, 37.2, 1e-9, "filler lower-chamfer start width")
-near(fr, 1.6, 1e-9, "filler lower-chamfer start radius")
-fw, fh, fr = core.filler_profile_dimensions_at_depth_mm(4.75, 42, 42)
-near(fw, 35.6, 1e-9, "filler bottom width")
-near(fh, 35.6, 1e-9, "filler bottom height")
-near(fr, 0.8, 1e-9, "filler bottom radius")
+near(core.BIN_BOTTOM_TOTAL_DEPTH_MM, 4.75, 1e-9, "bin_bottom foot total height")
+local fw, fh, fr = core.bin_bottom_profile_dimensions_at_depth_mm(0, 42, 42)
+near(fw, 41.5, 1e-9, "bin_bottom top width")
+near(fh, 41.5, 1e-9, "bin_bottom top height")
+near(fr, 3.75, 1e-9, "bin_bottom top radius")
+fw, fh, fr = core.bin_bottom_profile_dimensions_at_depth_mm(2.15, 42, 42)
+near(fw, 37.2, 1e-9, "bin_bottom wall width")
+near(fh, 37.2, 1e-9, "bin_bottom wall height")
+near(fr, 1.6, 1e-9, "bin_bottom wall radius")
+fw, fh, fr = core.bin_bottom_profile_dimensions_at_depth_mm(3.95, 42, 42)
+near(fw, 37.2, 1e-9, "bin_bottom lower-chamfer start width")
+near(fr, 1.6, 1e-9, "bin_bottom lower-chamfer start radius")
+fw, fh, fr = core.bin_bottom_profile_dimensions_at_depth_mm(4.75, 42, 42)
+near(fw, 35.6, 1e-9, "bin_bottom bottom width")
+near(fh, 35.6, 1e-9, "bin_bottom bottom height")
+near(fr, 0.8, 1e-9, "bin_bottom bottom radius")
 
 near(core.to_job_units(25.4, false), 1.0, 1e-9, "mm to inch")
 near(core.from_job_units(1.0, false), 25.4, 1e-9, "inch job value to mm")
@@ -129,7 +129,7 @@ near(core.finish_corner_remnant_mm(25.4, 1.6),
 near(core.magnet_outer_diameter_mm(6.2, 0.25), 6.7, 1e-9,
   "magnet outer edge should include the chamfer on both sides")
 assert(core.circle_fits_rounded_rect(13, 13, 3.35, 35.6, 35.6, 0.8),
-  "standard filler magnet chamfer should fit inside the foot bottom")
+  "standard bin_bottom magnet chamfer should fit inside the foot bottom")
 assert(not core.circle_fits_rounded_rect(16, 16, 3.35, 35.6, 35.6, 0.8),
   "a circle crossing the rounded foot corner should be rejected")
 
@@ -168,32 +168,32 @@ local undersized, undersized_error = core.resolve_size(layout_options({
 assert(undersized == nil and string.find(undersized_error, "complete cell", 1, true),
   "an overall size smaller than one cell should be rejected")
 
-local filler_options = layout_options({
-  output_type = "Filler Plate",
+local bin_bottom_options = layout_options({
+  output_type = "Bin Bottom",
   size_mode = "Grid Rows / Columns",
   columns = 7,
   rows = 8,
   overall_x_mm = 307,
   overall_y_mm = 354
 })
-size = assert(core.resolve_size(filler_options))
+size = assert(core.resolve_size(bin_bottom_options))
 assert(size.columns == 7 and size.rows == 8,
-  "filler grid counts should remain independent of plate dimensions")
-near(size.overall_x_mm, 307, 1e-9, "filler plate width")
-near(size.overall_y_mm, 354, 1e-9, "filler plate height")
-local filler_layout = assert(core.create_layout(filler_options, 0, 0))
-near(filler_layout.max_x, 307, 1e-9, "filler physical right edge")
-near(filler_layout.max_y, 354, 1e-9, "filler physical top edge")
-assert(#core.layout_cells(filler_layout) == 56, "filler grid should have 56 cells")
-local oversized_filler, oversized_filler_error = core.resolve_size(layout_options({
-  output_type = "Filler Plate",
+  "bin_bottom grid counts should remain independent of plate dimensions")
+near(size.overall_x_mm, 307, 1e-9, "bin_bottom plate width")
+near(size.overall_y_mm, 354, 1e-9, "bin_bottom plate height")
+local bin_bottom_layout = assert(core.create_layout(bin_bottom_options, 0, 0))
+near(bin_bottom_layout.max_x, 307, 1e-9, "bin_bottom physical right edge")
+near(bin_bottom_layout.max_y, 354, 1e-9, "bin_bottom physical top edge")
+assert(#core.layout_cells(bin_bottom_layout) == 56, "bin_bottom grid should have 56 cells")
+local oversized_bin_bottom, oversized_bin_bottom_error = core.resolve_size(layout_options({
+  output_type = "Bin Bottom",
   columns = 8,
   rows = 8,
   overall_x_mm = 307,
   overall_y_mm = 354
 }))
-assert(oversized_filler == nil and string.find(oversized_filler_error, "does not fit", 1, true),
-  "a filler grid wider than the plate should be rejected")
+assert(oversized_bin_bottom == nil and string.find(oversized_bin_bottom_error, "does not fit", 1, true),
+  "a bin_bottom grid wider than the plate should be rejected")
 
 -- The two original placement modes map exactly to Bottom Left and Center.
 local layout = assert(core.create_layout(layout_options(), 10, 20))
@@ -209,27 +209,27 @@ near(cells[1].cy, 41, 1e-9, "legacy first-cell center Y")
 layout = assert(core.create_layout(layout_options({origin_from = "Center"}), 10, 20))
 near(layout.grid_min_x, -53, 1e-9, "legacy centered-origin X")
 near(layout.grid_min_y, -22, 1e-9, "legacy centered-origin Y")
-local filler_geometry = assert(core.filler_geometry(layout))
+local bin_bottom_geometry = assert(core.bin_bottom_geometry(layout))
 local shared_cells = core.layout_cells(layout)
-assert(#filler_geometry.cells == #shared_cells,
-  "Filler Plate geometry should consume every shared layout cell")
-for index, filler_cell in ipairs(filler_geometry.cells) do
-  near(filler_cell.cx, shared_cells[index].cx, 1e-9, "shared filler center X")
-  near(filler_cell.cy, shared_cells[index].cy, 1e-9, "shared filler center Y")
+assert(#bin_bottom_geometry.cells == #shared_cells,
+  "Bin Bottom geometry should consume every shared layout cell")
+for index, bin_bottom_cell in ipairs(bin_bottom_geometry.cells) do
+  near(bin_bottom_cell.cx, shared_cells[index].cx, 1e-9, "shared bin_bottom center X")
+  near(bin_bottom_cell.cy, shared_cells[index].cy, 1e-9, "shared bin_bottom center Y")
 end
-near(filler_geometry.boundary.min_x, layout.min_x, 1e-9, "shared filler boundary min X")
-near(filler_geometry.boundary.max_y, layout.max_y, 1e-9, "shared filler boundary max Y")
+near(bin_bottom_geometry.boundary.min_x, layout.min_x, 1e-9, "shared bin_bottom boundary min X")
+near(bin_bottom_geometry.boundary.max_y, layout.max_y, 1e-9, "shared bin_bottom boundary max Y")
 
-local custom_filler_layout = assert(core.create_layout(layout_options({
+local custom_bin_bottom_layout = assert(core.create_layout(layout_options({
   cell_width_mm = 50,
   cell_height_mm = 40
 }), 0, 0))
-local custom_filler = assert(core.filler_geometry(custom_filler_layout))
-near(custom_filler.cells[1].top.width, 49.5, 1e-9, "custom filler top width")
-near(custom_filler.cells[1].top.height, 39.5, 1e-9, "custom filler top height")
-near(custom_filler.cells[1].bottom.width, 43.6, 1e-9, "custom filler bottom width")
-near(custom_filler.cells[1].bottom.height, 33.6, 1e-9, "custom filler bottom height")
-local undersized_filler, undersized_filler_error = core.filler_geometry({
+local custom_bin_bottom = assert(core.bin_bottom_geometry(custom_bin_bottom_layout))
+near(custom_bin_bottom.cells[1].top.width, 49.5, 1e-9, "custom bin_bottom top width")
+near(custom_bin_bottom.cells[1].top.height, 39.5, 1e-9, "custom bin_bottom top height")
+near(custom_bin_bottom.cells[1].bottom.width, 43.6, 1e-9, "custom bin_bottom bottom width")
+near(custom_bin_bottom.cells[1].bottom.height, 33.6, 1e-9, "custom bin_bottom bottom height")
+local undersized_bin_bottom, undersized_bin_bottom_error = core.bin_bottom_geometry({
   min_x = 0,
   min_y = 0,
   max_x = 7,
@@ -241,8 +241,8 @@ local undersized_filler, undersized_filler_error = core.filler_geometry({
   cell_width_mm = 7,
   cell_height_mm = 7
 })
-assert(undersized_filler == nil and
-       string.find(undersized_filler_error, "too small", 1, true),
+assert(undersized_bin_bottom == nil and
+       string.find(undersized_bin_bottom_error, "too small", 1, true),
   "cells too small for the nominal bottom radius should be rejected")
 
 local inserted_tab_count = 0
@@ -263,10 +263,10 @@ end
 Point3D = function(x, y, z) return {x = x, y = y, z = z} end
 Point2D = function(x, y) return {x = x, y = y} end
 CreateCadContour = function(contour) return contour end
-local filler_layers = {}
-local filler_layer_manager = {
+local bin_bottom_layers = {}
+local bin_bottom_layer_manager = {
   GetLayerWithName = function(_, name)
-    local layer = filler_layers[name]
+    local layer = bin_bottom_layers[name]
     if layer == nil then
       layer = {
         IsEmpty = true,
@@ -277,25 +277,25 @@ local filler_layer_manager = {
           self.last_object = object
         end
       }
-      filler_layers[name] = layer
+      bin_bottom_layers[name] = layer
     end
     return layer
   end,
   FindLayerWithName = function(_, name)
-    return filler_layers[name]
+    return bin_bottom_layers[name]
   end
 }
-assert(core.add_filler_geometry({LayerManager = filler_layer_manager}, layout, 1.0))
-assert(filler_layers["Gridfinity - Filler Plate Boundary"].object_count == 1,
-  "Filler Plate geometry should create one overall boundary")
-assert(filler_layers["Gridfinity - Filler Foot Top Edge"].object_count == #shared_cells,
-  "Filler Plate geometry should create one top contour per shared cell")
-assert(filler_layers["Gridfinity - Filler Foot Wall Edge"].object_count == #shared_cells,
-  "Filler Plate geometry should create one wall contour per shared cell")
-assert(filler_layers["Gridfinity - Filler Foot Bottom Edge"].object_count == #shared_cells,
-  "Filler Plate geometry should create one bottom contour per shared cell")
+assert(core.add_bin_bottom_geometry({LayerManager = bin_bottom_layer_manager}, layout, 1.0))
+assert(bin_bottom_layers["Gridfinity - Bin Bottom Boundary"].object_count == 1,
+  "Bin Bottom geometry should create one overall boundary")
+assert(bin_bottom_layers["Gridfinity - Bin Bottom Foot Top Edge"].object_count == #shared_cells,
+  "Bin Bottom geometry should create one top contour per shared cell")
+assert(bin_bottom_layers["Gridfinity - Bin Bottom Foot Wall Edge"].object_count == #shared_cells,
+  "Bin Bottom geometry should create one wall contour per shared cell")
+assert(bin_bottom_layers["Gridfinity - Bin Bottom Foot Bottom Edge"].object_count == #shared_cells,
+  "Bin Bottom geometry should create one bottom contour per shared cell")
 
-local filler_magnet_options = {
+local bin_bottom_magnet_options = {
   include_magnets = true,
   magnet_diameter_mm = 6.2,
   magnet_depth_mm = 2.4,
@@ -305,29 +305,29 @@ local filler_magnet_options = {
   cell_width_mm = 42,
   cell_height_mm = 42
 }
-local filler_magnets = assert(core.filler_magnet_geometry(layout, filler_magnet_options))
-assert(#filler_magnets == #shared_cells * 4,
-  "Filler Plate magnets should be created four times per complete cell")
-near(filler_magnets[1].cx, shared_cells[1].cx - 13, 1e-9,
-  "Filler Plate magnet X should reuse per-cell placement")
-near(filler_magnets[1].cy, shared_cells[1].cy - 13, 1e-9,
-  "Filler Plate magnet Y should reuse per-cell placement")
-near(filler_magnets[1].outer_diameter, 6.7, 1e-9,
-  "Filler Plate magnet outer vector should include the chamfer")
-assert(core.add_filler_geometry(
-  {LayerManager = filler_layer_manager}, layout, 1.0, filler_magnet_options))
-assert(filler_layers["Gridfinity - Magnet Outer Edge"].object_count == #shared_cells * 4,
-  "Filler Plate geometry should create one outer magnet contour per magnet")
-assert(filler_layers["Gridfinity - Magnet Inner Edge"].object_count == #shared_cells * 4,
-  "Filler Plate geometry should create one inner magnet contour per magnet")
+local bin_bottom_magnets = assert(core.bin_bottom_magnet_geometry(layout, bin_bottom_magnet_options))
+assert(#bin_bottom_magnets == #shared_cells * 4,
+  "Bin Bottom magnets should be created four times per complete cell")
+near(bin_bottom_magnets[1].cx, shared_cells[1].cx - 13, 1e-9,
+  "Bin Bottom magnet X should reuse per-cell placement")
+near(bin_bottom_magnets[1].cy, shared_cells[1].cy - 13, 1e-9,
+  "Bin Bottom magnet Y should reuse per-cell placement")
+near(bin_bottom_magnets[1].outer_diameter, 6.7, 1e-9,
+  "Bin Bottom magnet outer vector should include the chamfer")
+assert(core.add_bin_bottom_geometry(
+  {LayerManager = bin_bottom_layer_manager}, layout, 1.0, bin_bottom_magnet_options))
+assert(bin_bottom_layers["Gridfinity - Magnet Outer Edge"].object_count == #shared_cells * 4,
+  "Bin Bottom geometry should create one outer magnet contour per magnet")
+assert(bin_bottom_layers["Gridfinity - Magnet Inner Edge"].object_count == #shared_cells * 4,
+  "Bin Bottom geometry should create one inner magnet contour per magnet")
 
-local no_filler_magnets = assert(core.filler_magnet_geometry(layout, {
+local no_bin_bottom_magnets = assert(core.bin_bottom_magnet_geometry(layout, {
   include_magnets = false
 }))
-assert(#no_filler_magnets == 0, "disabled Filler Plate magnets should create no geometry")
+assert(#no_bin_bottom_magnets == 0, "disabled Bin Bottom magnets should create no geometry")
 
-local custom_filler_magnets = assert(core.filler_magnet_geometry(
-  custom_filler_layout, {
+local custom_bin_bottom_magnets = assert(core.bin_bottom_magnet_geometry(
+  custom_bin_bottom_layout, {
     include_magnets = true,
     magnet_diameter_mm = 6.2,
     magnet_depth_mm = 2.4,
@@ -337,10 +337,10 @@ local custom_filler_magnets = assert(core.filler_magnet_geometry(
     cell_width_mm = 50,
     cell_height_mm = 40
   }))
-near(custom_filler_magnets[1].cx, 8, 1e-9,
-  "custom-pitch Filler Plate magnet should retain its edge inset in X")
-near(custom_filler_magnets[1].cy, 8, 1e-9,
-  "custom-pitch Filler Plate magnet should retain its edge inset in Y")
+near(custom_bin_bottom_magnets[1].cx, 8, 1e-9,
+  "custom-pitch Bin Bottom magnet should retain its edge inset in X")
+near(custom_bin_bottom_magnets[1].cy, 8, 1e-9,
+  "custom-pitch Bin Bottom magnet should retain its edge inset in Y")
 
 local margin_magnet_layout = assert(core.create_layout(layout_options({
   size_mode = "Overall Dimensions",
@@ -348,41 +348,41 @@ local margin_magnet_layout = assert(core.create_layout(layout_options({
   overall_y_mm = 85,
   origin_from = "Top Right"
 }), 100, 85))
-local margin_filler_magnets = assert(core.filler_magnet_geometry(
-  margin_magnet_layout, filler_magnet_options))
-assert(#margin_filler_magnets == 16,
+local margin_bin_bottom_magnets = assert(core.bin_bottom_magnet_geometry(
+  margin_magnet_layout, bin_bottom_magnet_options))
+assert(#margin_bin_bottom_magnets == 16,
   "unused margins should not create magnets outside the four complete cells")
-near(margin_filler_magnets[14].cx, 92, 1e-9,
-  "right-origin Filler Plate magnets should align to the shared grid")
+near(margin_bin_bottom_magnets[14].cx, 92, 1e-9,
+  "right-origin Bin Bottom magnets should align to the shared grid")
 
-local function filler_magnet_validation(overrides)
+local function bin_bottom_magnet_validation(overrides)
   local options = {}
-  for key, value in pairs(filler_magnet_options) do options[key] = value end
+  for key, value in pairs(bin_bottom_magnet_options) do options[key] = value end
   for key, value in pairs(overrides or {}) do options[key] = value end
-  return core.validate_filler_magnets(options)
+  return core.validate_bin_bottom_magnets(options)
 end
 
-local filler_magnets_ok, filler_magnets_error = filler_magnet_validation()
-assert(filler_magnets_ok, "standard Filler Plate magnets should validate")
-filler_magnets_ok, filler_magnets_error = filler_magnet_validation({magnet_inset_mm = 2})
-assert(not filler_magnets_ok and string.find(filler_magnets_error, "foot bottom", 1, true),
-  "Filler Plate magnet chamfers outside the bottom profile should be rejected")
-filler_magnets_ok, filler_magnets_error = filler_magnet_validation({magnet_inset_mm = 20})
-assert(not filler_magnets_ok and string.find(filler_magnets_error, "overlap", 1, true),
-  "overlapping Filler Plate magnets should be rejected")
-filler_magnets_ok, filler_magnets_error = filler_magnet_validation({
+local bin_bottom_magnets_ok, bin_bottom_magnets_error = bin_bottom_magnet_validation()
+assert(bin_bottom_magnets_ok, "standard Bin Bottom magnets should validate")
+bin_bottom_magnets_ok, bin_bottom_magnets_error = bin_bottom_magnet_validation({magnet_inset_mm = 2})
+assert(not bin_bottom_magnets_ok and string.find(bin_bottom_magnets_error, "foot bottom", 1, true),
+  "Bin Bottom magnet chamfers outside the bottom profile should be rejected")
+bin_bottom_magnets_ok, bin_bottom_magnets_error = bin_bottom_magnet_validation({magnet_inset_mm = 20})
+assert(not bin_bottom_magnets_ok and string.find(bin_bottom_magnets_error, "overlap", 1, true),
+  "overlapping Bin Bottom magnets should be rejected")
+bin_bottom_magnets_ok, bin_bottom_magnets_error = bin_bottom_magnet_validation({
   magnet_depth_mm = 4.76
 })
-assert(not filler_magnets_ok and string.find(filler_magnets_error, "within", 1, true),
-  "Filler Plate magnets must remain within the mating foot")
-filler_magnets_ok, filler_magnets_error = filler_magnet_validation({
+assert(not bin_bottom_magnets_ok and string.find(bin_bottom_magnets_error, "within", 1, true),
+  "Bin Bottom magnets must remain within the mating foot")
+bin_bottom_magnets_ok, bin_bottom_magnets_error = bin_bottom_magnet_validation({
   magnet_depth_mm = 0.2,
   magnet_chamfer_mm = 0.25
 })
-assert(not filler_magnets_ok and string.find(filler_magnets_error, "deeper", 1, true),
-  "Filler Plate magnet chamfers deeper than their pockets should be rejected")
+assert(not bin_bottom_magnets_ok and string.find(bin_bottom_magnets_error, "deeper", 1, true),
+  "Bin Bottom magnet chamfers deeper than their pockets should be rejected")
 
-local filler_plan_options = {
+local bin_bottom_plan_options = {
   allowance_mm = 0.2,
   include_magnets = false,
   magnet_diameter_mm = 6.2,
@@ -394,129 +394,129 @@ local filler_plan_options = {
   cell_height_mm = 42,
   layout = layout
 }
-local filler_tools = {
+local bin_bottom_tools = {
   rough_diameter_mm = 6.35,
   finish_diameter_mm = 3.175,
   vbit_diameter_mm = 3.175,
   vbit_angle = 90
 }
-local filler_plan = assert(core.build_filler_operation_plan(
-  filler_plan_options, filler_tools, 6.0))
-near(filler_plan.minimum_thickness_mm, 5.4, 1e-9,
-  "multi-cell Filler Plate stock should include the deeper seam pass")
-near(filler_plan.deepest_cut_mm, 6.0, 1e-9,
+local bin_bottom_plan = assert(core.build_bin_bottom_operation_plan(
+  bin_bottom_plan_options, bin_bottom_tools, 6.0))
+near(bin_bottom_plan.minimum_thickness_mm, 5.4, 1e-9,
+  "multi-cell Bin Bottom stock should include the deeper seam pass")
+near(bin_bottom_plan.deepest_cut_mm, 6.0, 1e-9,
   "the outside cutout should be the deepest operation")
-assert(filler_plan.seam_count == 3,
+assert(bin_bottom_plan.seam_count == 3,
   "a 3 by 2 plate should have two vertical and one horizontal seam")
-assert(#filler_plan.lower_chamfer_passes == 1,
+assert(#bin_bottom_plan.lower_chamfer_passes == 1,
   "a 1/8-inch V-bit should cut the lower chamfer in one contour pass")
-assert(#filler_plan.upper_chamfer_passes == 2,
+assert(#bin_bottom_plan.upper_chamfer_passes == 2,
   "a 1/8-inch V-bit should cut the upper chamfer in two contour passes")
-near(filler_plan.lower_chamfer_passes[1].target_depth_mm, 0.8, 1e-9,
+near(bin_bottom_plan.lower_chamfer_passes[1].target_depth_mm, 0.8, 1e-9,
   "lower chamfer should end at the exposed-face depth")
-near(filler_plan.lower_chamfer_passes[1].width, 37.2, 1e-9,
+near(bin_bottom_plan.lower_chamfer_passes[1].width, 37.2, 1e-9,
   "lower chamfer tool tip should follow the wall contour")
-near(filler_plan.upper_chamfer_passes[2].target_depth_mm, 4.75, 1e-9,
+near(bin_bottom_plan.upper_chamfer_passes[2].target_depth_mm, 4.75, 1e-9,
   "final upper chamfer pass should reach the plate interface")
-near(filler_plan.upper_chamfer_passes[2].width, 41.5, 1e-9,
+near(bin_bottom_plan.upper_chamfer_passes[2].width, 41.5, 1e-9,
   "final upper chamfer tool tip should follow the top contour")
-near(filler_plan.rough_clearance_expansion_mm, 3.375, 1e-9,
+near(bin_bottom_plan.rough_clearance_expansion_mm, 3.375, 1e-9,
   "rough clearance should expand by cutter radius plus allowance")
-near(filler_plan.finish_clearance_expansion_mm, 1.5875, 1e-9,
+near(bin_bottom_plan.finish_clearance_expansion_mm, 1.5875, 1e-9,
   "finish clearance should expand by cutter radius")
-near(filler_plan.interface_clearance_expansion_mm, 3.175, 1e-9,
+near(bin_bottom_plan.interface_clearance_expansion_mm, 3.175, 1e-9,
   "interface clearance should provide an accessible perimeter beyond the plate")
-near(filler_plan.wall_clearance_mm, 4.8, 1e-9,
+near(bin_bottom_plan.wall_clearance_mm, 4.8, 1e-9,
   "standard wall profiles should leave 4.8 mm clearance")
-assert(not filler_plan.use_rough_clearance,
+assert(not bin_bottom_plan.use_rough_clearance,
   "a quarter-inch rougher plus allowance should not fit the wall clearance")
-assert(filler_plan.expected_operations == 8,
-  "a multi-cell Filler Plate should include seam and outside-cutout operations")
-assert(filler_plan.operations[1].layer_names[1] ==
-       "Gridfinity - Filler Finish Clearance Boundary" and
-       filler_plan.operations[1].layer_names[2] ==
-       "Gridfinity - Filler Foot Wall Edge" and
-       filler_plan.operations[1].cut_depth_mm == 2.6,
+assert(bin_bottom_plan.expected_operations == 8,
+  "a multi-cell Bin Bottom should include seam and outside-cutout operations")
+assert(bin_bottom_plan.operations[1].layer_names[1] ==
+       "Gridfinity - Bin Bottom Finish Clearance Boundary" and
+       bin_bottom_plan.operations[1].layer_names[2] ==
+       "Gridfinity - Bin Bottom Foot Wall Edge" and
+       bin_bottom_plan.operations[1].cut_depth_mm == 2.6,
   "finishing clearance should use wall islands and stop at wall depth")
-assert(filler_plan.operations[3].layer_names[1] ==
-       "Gridfinity - Filler Plate Interface Clearance Boundary" and
-       filler_plan.operations[3].layer_names[2] ==
-       "Gridfinity - Filler Foot Top Edge" and
-       filler_plan.operations[3].start_depth_mm == 2.6 and
-       filler_plan.operations[3].cut_depth_mm == 2.15,
+assert(bin_bottom_plan.operations[3].layer_names[1] ==
+       "Gridfinity - Bin Bottom Interface Clearance Boundary" and
+       bin_bottom_plan.operations[3].layer_names[2] ==
+       "Gridfinity - Bin Bottom Foot Top Edge" and
+       bin_bottom_plan.operations[3].start_depth_mm == 2.6 and
+       bin_bottom_plan.operations[3].cut_depth_mm == 2.15,
   "plate-interface clearance should protect foot tops and finish at 4.75 mm")
-assert(filler_plan.operations[2].profile_side == "outside" and
-       filler_plan.operations[2].start_depth_mm == 0.8 and
-       filler_plan.operations[2].cut_depth_mm == 1.8,
+assert(bin_bottom_plan.operations[2].profile_side == "outside" and
+       bin_bottom_plan.operations[2].start_depth_mm == 0.8 and
+       bin_bottom_plan.operations[2].cut_depth_mm == 1.8,
   "wall finishing should run outside the wall from 0.8 through 2.6 mm")
-assert(filler_plan.operations[7].label == "Upper Chamfer Seam Pass" and
-       filler_plan.operations[7].layer_names[1] ==
-         "Gridfinity - Filler Upper Chamfer Seam Pass" and
-       filler_plan.operations[7].start_depth_mm == 2.6 and
-       filler_plan.operations[7].cut_depth_mm == 2.4 and
-       filler_plan.operations[7].allow_open,
+assert(bin_bottom_plan.operations[7].label == "Upper Chamfer Seam Pass" and
+       bin_bottom_plan.operations[7].layer_names[1] ==
+         "Gridfinity - Bin Bottom Upper Chamfer Seam Pass" and
+       bin_bottom_plan.operations[7].start_depth_mm == 2.6 and
+       bin_bottom_plan.operations[7].cut_depth_mm == 2.4 and
+       bin_bottom_plan.operations[7].allow_open,
   "the final upper-chamfer operation should clean open seams to 5 mm")
-assert(filler_plan.operations[8].label == "Rough Outside Cutout" and
-       filler_plan.operations[8].tool == "rough" and
-       filler_plan.operations[8].profile_side == "outside" and
-       filler_plan.operations[8].cut_depth_mm == 6.0 and
-       filler_plan.operations[8].allowance_mm == 0.0 and
-       filler_plan.operations[8].use_tabs,
+assert(bin_bottom_plan.operations[8].label == "Rough Outside Cutout" and
+       bin_bottom_plan.operations[8].tool == "rough" and
+       bin_bottom_plan.operations[8].profile_side == "outside" and
+       bin_bottom_plan.operations[8].cut_depth_mm == 6.0 and
+       bin_bottom_plan.operations[8].allowance_mm == 0.0 and
+       bin_bottom_plan.operations[8].use_tabs,
   "the rough tool should cut the boundary through stock with tabs")
-assert(core.add_filler_geometry(
-  {LayerManager = filler_layer_manager}, layout, 1.0,
-  filler_plan_options, filler_plan))
-assert(filler_layers["Gridfinity - Filler Lower Chamfer Pass 1"].object_count ==
+assert(core.add_bin_bottom_geometry(
+  {LayerManager = bin_bottom_layer_manager}, layout, 1.0,
+  bin_bottom_plan_options, bin_bottom_plan))
+assert(bin_bottom_layers["Gridfinity - Bin Bottom Lower Chamfer Pass 1"].object_count ==
        #shared_cells,
   "each lower-chamfer pass should have one derived contour per complete cell")
-assert(filler_layers["Gridfinity - Filler Upper Chamfer Pass 2"].object_count ==
+assert(bin_bottom_layers["Gridfinity - Bin Bottom Upper Chamfer Pass 2"].object_count ==
        #shared_cells,
   "each upper-chamfer pass should have one derived contour per complete cell")
-assert(filler_layers["Gridfinity - Filler Upper Chamfer Seam Pass"].object_count == 3,
+assert(bin_bottom_layers["Gridfinity - Bin Bottom Upper Chamfer Seam Pass"].object_count == 3,
   "the upper-chamfer seam layer should contain every internal grid centerline")
 assert(inserted_tab_count == 4,
-  "the Filler Plate boundary should receive one tab on each side")
-assert(filler_layers["Gridfinity - Filler Rough Clearance Boundary"] == nil and
-       filler_layers["Gridfinity - Filler Finish Clearance Boundary"].object_count == 1 and
-       filler_layers["Gridfinity - Filler Plate Interface Clearance Boundary"].object_count == 1,
+  "the Bin Bottom boundary should receive one tab on each side")
+assert(bin_bottom_layers["Gridfinity - Bin Bottom Rough Clearance Boundary"] == nil and
+       bin_bottom_layers["Gridfinity - Bin Bottom Finish Clearance Boundary"].object_count == 1 and
+       bin_bottom_layers["Gridfinity - Bin Bottom Interface Clearance Boundary"].object_count == 1,
   "both finishing stages should have expanded clearance boundaries")
-local no_rough_interface_boundary = filler_layers[
-  "Gridfinity - Filler Plate Interface Clearance Boundary"].last_object.points
+local no_rough_interface_boundary = bin_bottom_layers[
+  "Gridfinity - Bin Bottom Interface Clearance Boundary"].last_object.points
 near(no_rough_interface_boundary[1].x,
-  layout.min_x - filler_plan.interface_clearance_expansion_mm, 1e-9,
+  layout.min_x - bin_bottom_plan.interface_clearance_expansion_mm, 1e-9,
   "without roughing, interface clearance should still cover the plate edge")
 local magnet_plan_options = {}
-for key, value in pairs(filler_plan_options) do magnet_plan_options[key] = value end
+for key, value in pairs(bin_bottom_plan_options) do magnet_plan_options[key] = value end
 magnet_plan_options.include_magnets = true
-local magnet_plan = assert(core.build_filler_operation_plan(
-  magnet_plan_options, filler_tools, 6.0))
+local magnet_plan = assert(core.build_bin_bottom_operation_plan(
+  magnet_plan_options, bin_bottom_tools, 6.0))
 assert(magnet_plan.expected_operations == 10,
-  "magnets should add pocket and chamfer operations to the Filler Plate plan")
+  "magnets should add pocket and chamfer operations to the Bin Bottom plan")
 
 local margin_plan_options = {}
-for key, value in pairs(filler_plan_options) do margin_plan_options[key] = value end
+for key, value in pairs(bin_bottom_plan_options) do margin_plan_options[key] = value end
 margin_plan_options.layout = margin_magnet_layout
-local margin_plan = assert(core.build_filler_operation_plan(
-  margin_plan_options, filler_tools, 6.0))
+local margin_plan = assert(core.build_bin_bottom_operation_plan(
+  margin_plan_options, bin_bottom_tools, 6.0))
 assert(margin_plan.expected_operations == 8 and
        margin_plan.operations[1].kind == "pocket",
   "ordinary edge margins should retain finishing clearance only")
 assert(margin_plan.operations[1].layer_names[1] ==
-       "Gridfinity - Filler Finish Clearance Boundary" and
+       "Gridfinity - Bin Bottom Finish Clearance Boundary" and
        margin_plan.operations[1].layer_names[2] ==
-       "Gridfinity - Filler Foot Wall Edge",
+       "Gridfinity - Bin Bottom Foot Wall Edge",
   "finishing clearance should use expanded boundaries with wall contours as islands")
 
 for _, row_count in ipairs({7, 8}) do
   local large_plate_layout = assert(core.create_layout(layout_options({
-    output_type = "Filler Plate", columns = 7, rows = row_count,
+    output_type = "Bin Bottom", columns = 7, rows = row_count,
     overall_x_mm = 307, overall_y_mm = 354, origin_from = "Center"
   }), 0, 0))
   local large_plate_options = {}
-  for key, value in pairs(filler_plan_options) do large_plate_options[key] = value end
+  for key, value in pairs(bin_bottom_plan_options) do large_plate_options[key] = value end
   large_plate_options.layout = large_plate_layout
-  local large_plate_plan = assert(core.build_filler_operation_plan(
-    large_plate_options, filler_tools, 19.0))
+  local large_plate_plan = assert(core.build_bin_bottom_operation_plan(
+    large_plate_options, bin_bottom_tools, 19.0))
   if row_count == 7 then
     near(large_plate_layout.grid_min_y - large_plate_layout.min_y, 30, 1e-9,
       "7-row grid should have a 30 mm bottom band")
@@ -530,24 +530,24 @@ for _, row_count in ipairs({7, 8}) do
            large_plate_plan.operations[1].label == "Rough Clearance" and
            large_plate_plan.operations[1].cut_depth_mm == 4.75 and
            large_plate_plan.operations[1].layer_names[2] ==
-             "Gridfinity - Filler Foot Top Edge" and
+             "Gridfinity - Bin Bottom Foot Top Edge" and
            large_plate_plan.operations[2].label == "Wall Clearance" and
            large_plate_plan.operations[2].kind == "pocket" and
            large_plate_plan.operations[2].layer_names[1] ==
-             "Gridfinity - Filler Finish Clearance Boundary" and
+             "Gridfinity - Bin Bottom Finish Clearance Boundary" and
            large_plate_plan.operations[2].layer_names[2] ==
-             "Gridfinity - Filler Foot Wall Edge",
+             "Gridfinity - Bin Bottom Foot Wall Edge",
       "a centered 7 by 7 grid should rough around the top and bottom bands")
-    assert(core.add_filler_geometry(
-      {LayerManager = filler_layer_manager}, large_plate_layout, 1.0,
+    assert(core.add_bin_bottom_geometry(
+      {LayerManager = bin_bottom_layer_manager}, large_plate_layout, 1.0,
       large_plate_options, large_plate_plan))
-    assert(filler_layers["Gridfinity - Filler Rough Clearance Boundary"].object_count == 1,
+    assert(bin_bottom_layers["Gridfinity - Bin Bottom Rough Clearance Boundary"].object_count == 1,
       "the centered 7 by 7 plate should generate a rough clearance boundary")
     for _, layer_name in ipairs({
-      "Gridfinity - Filler Finish Clearance Boundary",
-      "Gridfinity - Filler Plate Interface Clearance Boundary"
+      "Gridfinity - Bin Bottom Finish Clearance Boundary",
+      "Gridfinity - Bin Bottom Interface Clearance Boundary"
     }) do
-      local pocket_boundary = filler_layers[layer_name].last_object.points
+      local pocket_boundary = bin_bottom_layers[layer_name].last_object.points
       near(pocket_boundary[1].x, large_plate_layout.grid_min_x, 1e-9,
         layer_name .. " left boundary should be the grid edge")
       near(pocket_boundary[1].y, large_plate_layout.grid_min_y, 1e-9,
@@ -559,8 +559,8 @@ for _, row_count in ipairs({7, 8}) do
         large_plate_layout.grid_min_y + 7 * large_plate_layout.cell_height_mm,
         1e-9, layer_name .. " top boundary should be the grid edge")
     end
-    local cutout_boundary = filler_layers[
-      "Gridfinity - Filler Plate Boundary"].last_object.points
+    local cutout_boundary = bin_bottom_layers[
+      "Gridfinity - Bin Bottom Boundary"].last_object.points
     near(cutout_boundary[1].x, large_plate_layout.min_x, 1e-9,
       "cutout should retain the physical plate boundary")
     near(cutout_boundary[3].y, large_plate_layout.max_y, 1e-9,
@@ -573,21 +573,21 @@ for _, row_count in ipairs({7, 8}) do
 end
 
 local small_rough_tools = {}
-for key, value in pairs(filler_tools) do small_rough_tools[key] = value end
+for key, value in pairs(bin_bottom_tools) do small_rough_tools[key] = value end
 small_rough_tools.rough_diameter_mm = 3.0
-local small_rough_plan = assert(core.build_filler_operation_plan(
-  filler_plan_options, small_rough_tools, 6.0))
+local small_rough_plan = assert(core.build_bin_bottom_operation_plan(
+  bin_bottom_plan_options, small_rough_tools, 6.0))
 assert(not small_rough_plan.use_rough_clearance and
        small_rough_plan.expected_operations == 8,
   "a 3 mm rougher should not fit the 0.5 mm gap between foot tops")
 
 local zero_allowance_options = {}
-for key, value in pairs(filler_plan_options) do zero_allowance_options[key] = value end
+for key, value in pairs(bin_bottom_plan_options) do zero_allowance_options[key] = value end
 zero_allowance_options.allowance_mm = 0.0
 local very_small_rough_tools = {}
-for key, value in pairs(filler_tools) do very_small_rough_tools[key] = value end
+for key, value in pairs(bin_bottom_tools) do very_small_rough_tools[key] = value end
 very_small_rough_tools.rough_diameter_mm = 0.4
-local zero_allowance_plan = assert(core.build_filler_operation_plan(
+local zero_allowance_plan = assert(core.build_bin_bottom_operation_plan(
   zero_allowance_options, very_small_rough_tools, 6.0))
 assert(zero_allowance_plan.use_rough_clearance and
        zero_allowance_plan.finish_wall_with_profile and
@@ -596,20 +596,20 @@ assert(zero_allowance_plan.use_rough_clearance and
          "Rough Outside Cutout" and
        zero_allowance_plan.operations[1].cut_depth_mm == 4.75 and
        zero_allowance_plan.operations[1].layer_names[2] ==
-         "Gridfinity - Filler Foot Top Edge" and
+         "Gridfinity - Bin Bottom Foot Top Edge" and
        zero_allowance_plan.operations[2].label == "Wall Clearance" and
        zero_allowance_plan.operations[2].kind == "profile" and
        zero_allowance_plan.operations[2].profile_side == "outside" and
        zero_allowance_plan.operations[2].layer_names[1] ==
-         "Gridfinity - Filler Foot Wall Edge",
+         "Gridfinity - Bin Bottom Foot Wall Edge",
   "zero-allowance full roughing should finish the wall with a profile")
 assert(zero_allowance_plan.operations[3].label == "Finish Clearance" and
        zero_allowance_plan.operations[3].kind == "profile" and
        zero_allowance_plan.operations[3].profile_side == "outside" and
        zero_allowance_plan.operations[3].layer_names[1] ==
-         "Gridfinity - Filler Foot Top Edge",
+         "Gridfinity - Bin Bottom Foot Top Edge",
   "rough-clearance follow-up should finish foot tops with outside profiles")
-local no_rough_fallback_plan = assert(core.build_filler_operation_plan(
+local no_rough_fallback_plan = assert(core.build_bin_bottom_operation_plan(
   zero_allowance_options, very_small_rough_tools, 6.0, true))
 assert(not no_rough_fallback_plan.use_rough_clearance and
        no_rough_fallback_plan.operations[1].label == "Wall Clearance" and
@@ -623,10 +623,10 @@ for _, operation in ipairs(zero_allowance_plan.operations) do
   assert(operation.label ~= "Vertical Walls",
     "wall finishing profile should replace the overlapping vertical-wall profile")
 end
-assert(core.add_filler_geometry(
-  {LayerManager = filler_layer_manager}, layout, 1.0,
+assert(core.add_bin_bottom_geometry(
+  {LayerManager = bin_bottom_layer_manager}, layout, 1.0,
   zero_allowance_options, zero_allowance_plan))
-assert(filler_layers["Gridfinity - Filler Rough Clearance Boundary"].object_count == 2,
+assert(bin_bottom_layers["Gridfinity - Bin Bottom Rough Clearance Boundary"].object_count == 2,
   "a rougher that fits between foot tops should generate a rough boundary")
 
 local insufficient_clearance_options = {}
@@ -634,7 +634,7 @@ for key, value in pairs(zero_allowance_options) do
   insufficient_clearance_options[key] = value
 end
 insufficient_clearance_options.allowance_mm = 0.1
-local insufficient_clearance_plan = assert(core.build_filler_operation_plan(
+local insufficient_clearance_plan = assert(core.build_bin_bottom_operation_plan(
   insufficient_clearance_options, very_small_rough_tools, 6.0))
 assert(not insufficient_clearance_plan.use_rough_clearance,
   "roughing diameter plus twice allowance must fit the top-to-top gap")
@@ -642,11 +642,11 @@ assert(not insufficient_clearance_plan.use_rough_clearance,
 local wide_margin_options = {}
 for key, value in pairs(zero_allowance_options) do wide_margin_options[key] = value end
 wide_margin_options.layout = assert(core.create_layout(layout_options({
-  output_type = "Filler Plate", columns = 7, rows = 7,
+  output_type = "Bin Bottom", columns = 7, rows = 7,
   overall_x_mm = 307, overall_y_mm = 354
 }), 0, 0))
-local perimeter_only_plan = assert(core.build_filler_operation_plan(
-  wide_margin_options, filler_tools, 19.0))
+local perimeter_only_plan = assert(core.build_bin_bottom_operation_plan(
+  wide_margin_options, bin_bottom_tools, 19.0))
 assert(perimeter_only_plan.use_rough_clearance and
        not perimeter_only_plan.finish_wall_with_profile and
        not perimeter_only_plan.finish_outside_cutout and
@@ -656,46 +656,46 @@ assert(perimeter_only_plan.use_rough_clearance and
          "Rough Outside Cutout",
   "wide perimeter roughing should pocket narrow gaps within the grid")
 
-local invalid_filler_plan, invalid_filler_error = core.build_filler_operation_plan(
-  filler_plan_options, {
+local invalid_bin_bottom_plan, invalid_bin_bottom_error = core.build_bin_bottom_operation_plan(
+  bin_bottom_plan_options, {
     rough_diameter_mm = 6.35,
     finish_diameter_mm = 3.175,
     vbit_diameter_mm = 6.35,
     vbit_angle = 90
   }, 6.0)
-assert(invalid_filler_plan == nil and
-       string.find(invalid_filler_error, "vertical wall", 1, true),
+assert(invalid_bin_bottom_plan == nil and
+       string.find(invalid_bin_bottom_error, "vertical wall", 1, true),
   "a V-bit cone wider than the upper chamfer should be rejected")
-invalid_filler_plan, invalid_filler_error = core.build_filler_operation_plan(
-  filler_plan_options, {
+invalid_bin_bottom_plan, invalid_bin_bottom_error = core.build_bin_bottom_operation_plan(
+  bin_bottom_plan_options, {
     rough_diameter_mm = 6.35,
     finish_diameter_mm = 5.0,
     vbit_diameter_mm = 3.175,
     vbit_angle = 90
   }, 6.0)
-assert(invalid_filler_plan == nil and
-       string.find(invalid_filler_error, "does not fit", 1, true),
+assert(invalid_bin_bottom_plan == nil and
+       string.find(invalid_bin_bottom_error, "does not fit", 1, true),
   "a finishing tool wider than the wall clearance should be rejected")
-invalid_filler_plan, invalid_filler_error = core.build_filler_operation_plan(
-  filler_plan_options, filler_tools, 5.399)
-assert(invalid_filler_plan == nil and string.find(invalid_filler_error, "too thin", 1, true),
-  "Filler Plate stock thinner than the foot plus flat top should be rejected")
-assert(core.build_filler_operation_plan(
-  filler_plan_options, filler_tools, 5.4),
-  "Filler Plate stock exactly at the calculated minimum should be accepted")
-assert(core.build_filler_operation_plan(
-  filler_plan_options, filler_tools,
+invalid_bin_bottom_plan, invalid_bin_bottom_error = core.build_bin_bottom_operation_plan(
+  bin_bottom_plan_options, bin_bottom_tools, 5.399)
+assert(invalid_bin_bottom_plan == nil and string.find(invalid_bin_bottom_error, "too thin", 1, true),
+  "Bin Bottom stock thinner than the foot plus flat top should be rejected")
+assert(core.build_bin_bottom_operation_plan(
+  bin_bottom_plan_options, bin_bottom_tools, 5.4),
+  "Bin Bottom stock exactly at the calculated minimum should be accepted")
+assert(core.build_bin_bottom_operation_plan(
+  bin_bottom_plan_options, bin_bottom_tools,
   core.from_job_units(5.401 / 25.4, false)),
   "inch-job stock above the calculated minimum should be accepted")
 
 local single_cell_plan_options = {}
-for key, value in pairs(filler_plan_options) do
+for key, value in pairs(bin_bottom_plan_options) do
   single_cell_plan_options[key] = value
 end
 single_cell_plan_options.layout = assert(core.create_layout(
   layout_options({columns = 1, rows = 1}), 0, 0))
-local single_cell_plan = assert(core.build_filler_operation_plan(
-  single_cell_plan_options, filler_tools, 5.15))
+local single_cell_plan = assert(core.build_bin_bottom_operation_plan(
+  single_cell_plan_options, bin_bottom_tools, 5.15))
 assert(single_cell_plan.seam_count == 0 and
        single_cell_plan.expected_operations == 7,
   "a one-cell plate should omit the seam but retain its outside cutout")
@@ -728,11 +728,11 @@ for origin_from, expected in pairs(expected_origins) do
   assert(layout.columns == 2 and layout.rows == 2,
     origin_from .. " should preserve the shared complete-cell count")
   local expected_grid = expected_grid_origins[origin_from]
-  local origin_filler = assert(core.filler_geometry(layout))
-  near(origin_filler.cells[1].cx, expected_grid[1] + 21, 1e-9,
-    origin_from .. " filler center X")
-  near(origin_filler.cells[1].cy, expected_grid[2] + 21, 1e-9,
-    origin_from .. " filler center Y")
+  local origin_bin_bottom = assert(core.bin_bottom_geometry(layout))
+  near(origin_bin_bottom.cells[1].cx, expected_grid[1] + 21, 1e-9,
+    origin_from .. " bin_bottom center X")
+  near(origin_bin_bottom.cells[1].cy, expected_grid[2] + 21, 1e-9,
+    origin_from .. " bin_bottom center Y")
 end
 
 layout = assert(core.create_layout(layout_options({
@@ -741,9 +741,9 @@ layout = assert(core.create_layout(layout_options({
   overall_y_mm = 85,
   origin_from = "Bottom Left"
 }), 10, 15))
-local offset_filler = assert(core.filler_geometry(layout))
-near(offset_filler.cells[1].cx, 31, 1e-9, "filler X offset should use shared layout")
-near(offset_filler.cells[1].cy, 36, 1e-9, "filler Y offset should use shared layout")
+local offset_bin_bottom = assert(core.bin_bottom_geometry(layout))
+near(offset_bin_bottom.cells[1].cx, 31, 1e-9, "bin_bottom X offset should use shared layout")
+near(offset_bin_bottom.cells[1].cy, 36, 1e-9, "bin_bottom Y offset should use shared layout")
 
 layout = assert(core.create_layout(layout_options({
   size_mode = "Overall Dimensions",

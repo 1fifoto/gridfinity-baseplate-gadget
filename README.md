@@ -3,7 +3,7 @@
 Creates editable native Vectric toolpaths for either of these Gridfinity parts:
 
 - **Baseplate** — negative receiving sockets machined into the material.
-- **Filler Plate** — a removable flat cover with positive mating feet machined
+- **Bin Bottom** — a removable flat cover with positive mating feet machined
   underside-up, followed by a tabbed outside cutout.
 
 The gadget is tested in VCarve Pro. It uses the shared Vectric V12 Gadget API
@@ -13,7 +13,7 @@ offsets, and optional four-hole magnet patterns. All values entered in the
 gadget are millimeters; tools may use either millimeter or inch units in the
 Vectric tool database.
 
-![Gridfinity Toolpath configured to create a ten-column Filler Plate](images/gridfinity-gadget-dialog.png)
+![Gridfinity Toolpath configured to create a ten-column Bin Bottom](images/gridfinity-gadget-dialog.png)
 
 ## Requirements
 
@@ -24,7 +24,7 @@ Vectric tool database.
 
 A 1/4-inch roughing end mill, 1/8-inch finishing end mill, and 1/4-inch
 90-degree V-bit are practical socket-only Baseplate starting choices. Baseplate
-magnet geometry may require a smaller V-bit. Filler Plates also need a narrower
+magnet geometry may require a smaller V-bit. Bin Bottoms also need a narrower
 V-bit; 1/8 inch is supported there.
 Always verify tool numbers, feeds, speeds, stepdowns, safe Z, and the 3D preview
 before posting code.
@@ -58,7 +58,7 @@ Tags matching `v*` create a GitHub Release with a versioned installer.
 
 ## Shared layout options
 
-Both output types use the same placement rules. Filler Plates allow the plate
+Both output types use the same placement rules. Bin Bottoms allow the plate
 boundary and grid count to be specified independently.
 
 ### Cell size
@@ -94,7 +94,7 @@ outside the complete-cell pattern but remains part of the physical boundary.
 For example, 100 × 85 mm at the standard pitch creates an exact 100 × 85 mm
 boundary containing a 2 × 2, 84 × 84 mm foot or socket pattern.
 
-For a Filler Plate, Overall X/Y and Grid Rows/Columns are both editable. The
+For a Bin Bottom, Overall X/Y and Grid Rows/Columns are both editable. The
 overall dimensions set the plate boundary; the counts set the foot pattern.
 The first sizing field edited in the dialog sets the calculation direction:
 editing overall dimensions calculates grid counts, while editing grid counts
@@ -112,7 +112,7 @@ Right—is placed at the VCarve job's actual XY origin plus the entered X and Y
 offsets. In Overall Dimensions mode, unused space is positioned on the sides
 implied by that anchor; Center divides it equally.
 
-Only the physical boundary must fit inside the job. Filler Plate helper vectors
+Only the physical boundary must fit inside the job. Bin Bottom helper vectors
 and cutter centerlines may extend beyond it; the gadget permits those portions
 of a toolpath to cut air. Consequently, a plate boundary may exactly fill the
 VCarve job.
@@ -153,9 +153,9 @@ A valid socket-only V-bit can therefore be rejected for a particular magnet
 diameter, chamfer, or inset; use a smaller V-bit, smaller magnet feature, or move
 the magnet centers inward.
 
-## Filler Plate setup and geometry
+## Bin Bottom setup and geometry
 
-Select **Filler Plate** and machine the stock underside-up. The material surface
+Select **Bin Bottom** and machine the stock underside-up. The material surface
 is the exposed bottom face of the feet; positive depth proceeds inward toward
 the recessed plate interface.
 
@@ -174,18 +174,18 @@ At the standard 42 mm pitch, adjacent foot tops have a nominal 0.5 mm
 separation. The plate boundary is independent of the complete-cell pattern, so
 Overall Dimensions margins remain part of the final plate.
 
-Filler geometry is organized on these primary layers:
+Bin Bottom geometry is organized on these primary layers:
 
-- `Gridfinity - Filler Plate Boundary`
-- `Gridfinity - Filler Foot Top Edge`
-- `Gridfinity - Filler Foot Wall Edge`
-- `Gridfinity - Filler Foot Bottom Edge`
+- `Gridfinity - Bin Bottom Boundary`
+- `Gridfinity - Bin Bottom Foot Top Edge`
+- `Gridfinity - Bin Bottom Foot Wall Edge`
+- `Gridfinity - Bin Bottom Foot Bottom Edge`
 
 The gadget also creates derived rough/finish clearance boundaries and one layer
-for each V-bit chamfer pass. Multi-cell plates add `Gridfinity - Filler Upper
+for each V-bit chamfer pass. Multi-cell plates add `Gridfinity - Bin Bottom Upper
 Chamfer Seam Pass`. Enabled magnets use the shared magnet edge layers.
 
-## Filler Plate operation sequence
+## Bin Bottom operation sequence
 
 The exact operation count varies with tool diameter, allowance, cell count, and
 magnet settings. Operations that apply are created in this order:
@@ -266,7 +266,7 @@ against the job size.
 ### Chamfer behavior
 
 The V-bit diameter determines how many derived lower- and upper-chamfer passes
-are required. Filler Plates require a 90-degree V-bit within 0.5 degree and no
+are required. Bin Bottoms require a 90-degree V-bit within 0.5 degree and no
 larger than 4.3 mm; a wider cone can cut into the finished vertical wall.
 
 A plate with more than one row or column also requires a V-bit at least 0.5 mm
@@ -286,10 +286,10 @@ positive allowance and Rough Clearance, the rough cutout leaves the selected
 allowance and a finishing-end-mill outside profile brings the edge to size.
 Both cutout paths retain the same tabs when both are generated.
 
-## Filler Plate magnets
+## Bin Bottom magnets
 
 When **Include magnet pockets** is off, no magnet vectors or toolpaths are
-created. Existing gadget magnet layers are cleared when the filler geometry is
+created. Existing gadget magnet layers are cleared when the bin_bottom geometry is
 regenerated.
 
 When enabled, four holes are placed in every complete cell. **Center distance
@@ -310,7 +310,7 @@ The gadget validates that:
 
 A zero magnet chamfer creates pockets without a Magnet Chamfers operation.
 
-## Filler Plate stock thickness
+## Bin Bottom stock thickness
 
 **Minimum flat-top thickness** is enforced whether or not magnets are enabled.
 It is the material retained beyond the deepest foot-forming V-bit operation:
@@ -327,8 +327,8 @@ depth; there is no separate stock-thickness field in the gadget.
 
 ## Validation and regeneration
 
-The gadget validates the complete operation plan before it changes filler
-layers or creates filler toolpaths. Common reasons for rejection include:
+The gadget validates the complete operation plan before it changes bin_bottom
+layers or creates bin_bottom toolpaths. Common reasons for rejection include:
 
 - the true physical layout boundary outside the VCarve job;
 - insufficient stock thickness;
@@ -346,19 +346,19 @@ toolpaths. Before a rerun, delete existing toolpaths whose names begin with
 gadget deliberately does not delete existing toolpaths automatically because it
 cannot reliably distinguish renamed or similarly named user-created paths.
 
-If a Filler Plate toolpath fails during creation, or a later Baseplate toolpath
+If a Bin Bottom toolpath fails during creation, or a later Baseplate toolpath
 fails, toolpaths already created by that run are removed. The regenerated
 geometry remains available for inspection. This rollback does not remove paths
 from earlier successful runs.
 
-Always inspect the VCarve 3D preview before machining. For a Filler Plate,
+Always inspect the VCarve 3D preview before machining. For a Bin Bottom,
 confirm that the stock surface is the exposed foot face, the lower and upper
 slopes face the correct direction, the vertical wall is 1.8 mm high, the plate
 interface is 4.75 mm deep, seam cleanup appears only between cells, magnets open
 from the exposed face, the outside path is on the correct side, and all four
 tabs remain.
 
-The current Filler Plate has undergone extensive VCarve preview testing. A
+The current Bin Bottom has undergone extensive VCarve preview testing. A
 physical cut and fit test has not yet been completed, so version 2.0.2 should be
 treated as preview-tested rather than physically validated. Aspire compatibility
 also remains unverified.
