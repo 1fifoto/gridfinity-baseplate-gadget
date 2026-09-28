@@ -194,8 +194,8 @@ magnet settings. Operations that apply are created in this order:
 | ---: | --- | --- | --- | --- |
 | 1 | Rough Clearance | Roughing end mill | Pockets accessible space around 41.5 mm foot-top islands to 4.75 mm. Leaves the selected allowance radially. | When the rough tool plus twice the allowance fits between foot tops or in an unused full-cell band at the plate edge. |
 | 2 | Wall Clearance | Finishing end mill | Pockets from 0 to 2.6 mm around the 37.2 mm wall contours. When Rough Clearance runs, this pocket is limited to the exact grid rectangle. After complete zero-allowance roughing, it instead profiles the walls. | Always. |
-| 3 | Plate Interface Clearance | Finishing end mill | Pockets from 2.6 to 4.75 mm around the 41.5 mm foot-top contours. When Rough Clearance runs, this pocket is limited to the exact grid rectangle. | Always. |
-| 4 | Vertical Walls | Finishing end mill | Outside profile from 0.8 to 2.6 mm, preserving the 1.8 mm wall. | Omitted when the Wall Clearance operation already profiles the wall. |
+| 3 | Vertical Walls | Finishing end mill | Outside profile from 0.8 to 2.6 mm, preserving the 1.8 mm wall. It follows Wall Clearance to finish wall edges the pocket cannot reach. | Omitted when the Wall Clearance operation already profiles the wall. |
+| 4 | Finish Clearance | Finishing end mill | When Rough Clearance runs, profiles outside the 41.5 mm foot-top contours from 2.6 to 4.75 mm to finish the rougher's remaining scallops. Otherwise, pockets the plate-interface area to the same depth. | Always. |
 | 5 | Magnet Pockets | Finishing end mill | Pockets inward from the exposed foot face to the selected depth. | Magnets enabled. |
 | 6 | Lower Chamfer Passes | 90° V-bit | One or more profile-on passes spanning 0 to 0.8 mm. | Always. |
 | 7 | Upper Chamfer Passes | 90° V-bit | One or more profile-on passes spanning 2.6 to 4.75 mm. | Always. |
@@ -228,9 +228,9 @@ add Rough Clearance or Finish Outside Cutout on an exact 2 × 2 grid.
 The finish clearance stages are checked independently of Rough Clearance. If
 the roughing cutter cannot fit between foot tops, it can still clear an unused
 full-cell band at the plate edge where the cutter fits. Wall Clearance pockets
-the narrow gaps the rougher cannot enter. When Rough Clearance runs, both Wall
-Clearance and Plate Interface Clearance use the exact grid rectangle, so they
-do not repeat the wide outer band. Wall, chamfer, seam, and magnet vectors are
+the narrow gaps the rougher cannot enter. When Rough Clearance runs, Wall
+Clearance uses the exact grid rectangle and Finish Clearance profiles the
+foot-top contours, so neither repeats the wide outer band. Wall, chamfer, seam, and magnet vectors are
 also within the grid. Outside cutouts still follow the physical plate boundary.
 
 With zero roughing allowance, Wall Clearance uses a finishing profile when the

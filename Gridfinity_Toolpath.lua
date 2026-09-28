@@ -498,7 +498,8 @@ function Core.filler_chamfer_passes(start_depth_mm, end_depth_mm,
   return passes, nil
 end
 
-function Core.build_filler_operation_plan(options, tools, material_thickness_mm)
+function Core.build_filler_operation_plan(options, tools, material_thickness_mm,
+                                          skip_rough_clearance)
   if tools.rough_diameter_mm <= 0.0 or tools.finish_diameter_mm <= 0.0 or
      tools.vbit_diameter_mm <= 0.0 then
     return nil, "All selected tools must have a positive diameter."
@@ -605,7 +606,7 @@ function Core.build_filler_operation_plan(options, tools, material_thickness_mm)
   end
   local required_rough_clearance_mm =
     tools.rough_diameter_mm + 2.0 * options.allowance_mm
-  local use_rough_clearance =
+  local rough_clearance_fits =
     required_rough_clearance_mm <= top_clearance_mm + 0.000000001 or
     (layout.overall_x_mm - layout.columns * options.cell_width_mm >=
        options.cell_width_mm - 0.000000001 and
@@ -613,6 +614,8 @@ function Core.build_filler_operation_plan(options, tools, material_thickness_mm)
     (layout.overall_y_mm - layout.rows * options.cell_height_mm >=
        options.cell_height_mm - 0.000000001 and
      required_rough_clearance_mm <= y_perimeter_clearance_mm + 0.000000001)
+  local use_rough_clearance = rough_clearance_fits and
+    skip_rough_clearance ~= true
   local finish_wall_with_profile = use_rough_clearance and
     options.allowance_mm <= 0.000000001 and
     tools.rough_diameter_mm <= top_clearance_mm + 0.000000001
@@ -672,21 +675,38 @@ function Core.build_filler_operation_plan(options, tools, material_thickness_mm)
       allowance_mm = 0.0
     })
   end
-  add_operation({
-    kind = "pocket", label = "Plate Interface Clearance", tool = "finish",
-    layer_names = {LAYER_FILLER_INTERFACE_CLEARANCE, LAYER_FILLER_TOP},
-    start_depth_mm = Core.FILLER_MACHINING_WALL_END_MM,
-    cut_depth_mm =
-      Core.FILLER_TOTAL_DEPTH_MM - Core.FILLER_MACHINING_WALL_END_MM,
-    allowance_mm = 0.0
-  })
   if not finish_wall_with_profile then
+    -- The wall pocket can clear only where the finishing cutter fits.  Follow
+    -- it immediately with the edge-defining profile on every wall contour.
     add_operation({
       kind = "profile", label = "Vertical Walls", tool = "finish",
       layer_names = {LAYER_FILLER_WALL},
       start_depth_mm = Core.FILLER_MACHINING_LOWER_END_MM,
       cut_depth_mm = Core.FILLER_VERTICAL_WALL_MM,
       profile_side = "outside"
+    })
+  end
+  if use_rough_clearance then
+    -- The rougher has already cleared this region to final depth.  Finish the
+    -- foot-top edge with a profile so the smaller cutter can sweep the
+    -- rougher's remaining inter-foot scallops without asking VCarve to pocket
+    -- a region that has no usable area for the cutter.
+    add_operation({
+      kind = "profile", label = "Finish Clearance", tool = "finish",
+      layer_names = {LAYER_FILLER_TOP},
+      start_depth_mm = Core.FILLER_MACHINING_WALL_END_MM,
+      cut_depth_mm =
+        Core.FILLER_TOTAL_DEPTH_MM - Core.FILLER_MACHINING_WALL_END_MM,
+      profile_side = "outside"
+    })
+  else
+    add_operation({
+      kind = "pocket", label = "Finish Clearance", tool = "finish",
+      layer_names = {LAYER_FILLER_INTERFACE_CLEARANCE, LAYER_FILLER_TOP},
+      start_depth_mm = Core.FILLER_MACHINING_WALL_END_MM,
+      cut_depth_mm =
+        Core.FILLER_TOTAL_DEPTH_MM - Core.FILLER_MACHINING_WALL_END_MM,
+      allowance_mm = 0.0
     })
   end
   if options.include_magnets then
@@ -1406,8 +1426,7 @@ local function create_pocket_toolpath(name, tool, material, unit, layer_names,
   pocket_data.CutDepth = cut_depth_mm * unit
   pocket_data.CutDirection = ProfileParameterData.CLIMB_DIRECTION
   pocket_data.Allowance = allowance_mm * unit
-  pocket_data.DoRasterClearance = true
-  pocket_data.RasterAngle = 0.0
+  pocket_data.DoRasterClearance = false
   pocket_data.ProfilePassType = PocketParameterData.PROFILE_LAST
   pocket_data.DoRamping = false
   pocket_data.RampDistance = 10.0 * unit
@@ -1452,6 +1471,15 @@ local function create_profile_toolpath(name, tool, material, unit, layer_names,
   return toolpath_id
 end
 
+-- Do not attempt to remove already-created native toolpaths after a later
+-- Create*Toolpath failure.  The return value's deletion overload differs
+-- between supported VCarve releases; attempting cleanup can hide the original
+-- failure with an overload error.  Leave the partial paths available for
+-- inspection, and report the operation which could not be created.
+local function delete_created_toolpath(manager, created_toolpath)
+  return true
+end
+
 local function create_filler_toolpaths(plan, rough_tool, finish_tool, vbit_tool,
                                        material, unit)
   local tools = {
@@ -1481,7 +1509,7 @@ local function create_filler_toolpaths(plan, rough_tool, finish_tool, vbit_tool,
     end
     if toolpath_id == nil then
       for index = #created_ids, 1, -1 do
-        manager:DeleteToolpathWithId(created_ids[index])
+        delete_created_toolpath(manager, created_ids[index])
       end
       return false, operation.name
     end
@@ -1492,7 +1520,7 @@ end
 
 local function delete_created_toolpaths(manager, created_ids)
   for index = #created_ids, 1, -1 do
-    manager:DeleteToolpathWithId(created_ids[index])
+    delete_created_toolpath(manager, created_ids[index])
   end
 end
 
@@ -1693,12 +1721,14 @@ function main(script_path)
     local vbit_dia_mm = Core.tool_value_in_job_units(
       vbit_tool.ToolDia, vbit_tool.InMM, true)
     local thickness_mm = Core.from_job_units(material.Thickness, material.InMM)
-    local plan, plan_error = Core.build_filler_operation_plan(options, {
+    local filler_tools = {
       rough_diameter_mm = rough_dia_mm,
       finish_diameter_mm = finish_dia_mm,
       vbit_diameter_mm = vbit_dia_mm,
       vbit_angle = vbit_tool.VBit_Angle
-    }, thickness_mm)
+    }
+    local plan, plan_error = Core.build_filler_operation_plan(
+      options, filler_tools, thickness_mm)
     if plan == nil then
       DisplayMessageBox(
         "Filler Plate settings must change before toolpaths can be created:\n\n" ..
@@ -1720,10 +1750,28 @@ function main(script_path)
     end
     local paths_ok, failed_operation = create_filler_toolpaths(
       plan, rough_tool, finish_tool, vbit_tool, material, unit)
+    local rough_clearance_omitted = false
+    if not paths_ok and plan.use_rough_clearance and
+       failed_operation == plan.operations[1].name then
+      -- A fit pre-check cannot account for every VCarve constraint.  If its
+      -- actual Rough Clearance calculation fails, discard its geometry and
+      -- regenerate the no-rough plan before attempting any finishing paths.
+      plan, plan_error = Core.build_filler_operation_plan(
+        options, filler_tools, thickness_mm, true)
+      if plan ~= nil then
+        filler_ok, filler_error = add_filler_geometry(
+          job, layout, unit, options, plan)
+        if filler_ok then
+          paths_ok, failed_operation = create_filler_toolpaths(
+            plan, rough_tool, finish_tool, vbit_tool, material, unit)
+          rough_clearance_omitted = paths_ok
+        end
+      end
+    end
     if not paths_ok then
       DisplayMessageBox(
         "Could not create " .. failed_operation ..
-        ". Toolpaths created by this run were removed; inspect the generated layers before trying again.")
+        ". Earlier toolpaths from this run were retained for inspection; delete them manually before trying again.")
       return false
     end
     job:Refresh2DView()
@@ -1731,6 +1779,8 @@ function main(script_path)
       "Created a " .. options.columns .. " x " .. options.rows ..
       " Gridfinity Filler Plate with " .. plan.expected_operations ..
       " editable native toolpaths.\n\n" ..
+      (rough_clearance_omitted and
+        "Rough Clearance could not be created and was omitted; the finishing-only plan was used.\n\n" or "") ..
       "The stock surface is the exposed foot face. Preview every toolpath and verify the recessed plate surface, both foot chamfers, internal seam cleanup when applicable, vertical walls, outside cutout, four holding tabs, tool numbers, feeds, safe Z, and cut depths before machining.")
     return true
   end

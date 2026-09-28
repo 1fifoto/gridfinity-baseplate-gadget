@@ -438,16 +438,16 @@ assert(filler_plan.operations[1].layer_names[1] ==
        "Gridfinity - Filler Foot Wall Edge" and
        filler_plan.operations[1].cut_depth_mm == 2.6,
   "finishing clearance should use wall islands and stop at wall depth")
-assert(filler_plan.operations[2].layer_names[1] ==
+assert(filler_plan.operations[3].layer_names[1] ==
        "Gridfinity - Filler Plate Interface Clearance Boundary" and
-       filler_plan.operations[2].layer_names[2] ==
+       filler_plan.operations[3].layer_names[2] ==
        "Gridfinity - Filler Foot Top Edge" and
-       filler_plan.operations[2].start_depth_mm == 2.6 and
-       filler_plan.operations[2].cut_depth_mm == 2.15,
+       filler_plan.operations[3].start_depth_mm == 2.6 and
+       filler_plan.operations[3].cut_depth_mm == 2.15,
   "plate-interface clearance should protect foot tops and finish at 4.75 mm")
-assert(filler_plan.operations[3].profile_side == "outside" and
-       filler_plan.operations[3].start_depth_mm == 0.8 and
-       filler_plan.operations[3].cut_depth_mm == 1.8,
+assert(filler_plan.operations[2].profile_side == "outside" and
+       filler_plan.operations[2].start_depth_mm == 0.8 and
+       filler_plan.operations[2].cut_depth_mm == 1.8,
   "wall finishing should run outside the wall from 0.8 through 2.6 mm")
 assert(filler_plan.operations[7].label == "Upper Chamfer Seam Pass" and
        filler_plan.operations[7].layer_names[1] ==
@@ -603,6 +603,22 @@ assert(zero_allowance_plan.use_rough_clearance and
        zero_allowance_plan.operations[2].layer_names[1] ==
          "Gridfinity - Filler Foot Wall Edge",
   "zero-allowance full roughing should finish the wall with a profile")
+assert(zero_allowance_plan.operations[3].label == "Finish Clearance" and
+       zero_allowance_plan.operations[3].kind == "profile" and
+       zero_allowance_plan.operations[3].profile_side == "outside" and
+       zero_allowance_plan.operations[3].layer_names[1] ==
+         "Gridfinity - Filler Foot Top Edge",
+  "rough-clearance follow-up should finish foot tops with outside profiles")
+local no_rough_fallback_plan = assert(core.build_filler_operation_plan(
+  zero_allowance_options, very_small_rough_tools, 6.0, true))
+assert(not no_rough_fallback_plan.use_rough_clearance and
+       no_rough_fallback_plan.operations[1].label == "Wall Clearance" and
+       no_rough_fallback_plan.operations[1].kind == "pocket" and
+       no_rough_fallback_plan.operations[2].label == "Vertical Walls" and
+       no_rough_fallback_plan.operations[2].kind == "profile" and
+       no_rough_fallback_plan.operations[3].label == "Finish Clearance" and
+       no_rough_fallback_plan.operations[3].kind == "pocket",
+  "a rejected rough-clearance path should fall back to finishing pockets")
 for _, operation in ipairs(zero_allowance_plan.operations) do
   assert(operation.label ~= "Vertical Walls",
     "wall finishing profile should replace the overlapping vertical-wall profile")
