@@ -9,7 +9,7 @@ if not GRIDFINITY_TEST_MODE then
 end
 
 local TITLE = "Gridfinity Toolpath"
-local VERSION = "2.0.1"
+local VERSION = "2.0.2"
 local REGISTRY_SECTION = "GridfinityToolpathGadget"
 local LAYER_SOCKET_OUTER = "Gridfinity - Socket Outer Edge"
 local LAYER_SOCKET_INNER = "Gridfinity - Socket Inner Edge"

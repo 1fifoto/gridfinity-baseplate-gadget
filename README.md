@@ -359,7 +359,7 @@ from the exposed face, the outside path is on the correct side, and all four
 tabs remain.
 
 The current Filler Plate has undergone extensive VCarve preview testing. A
-physical cut and fit test has not yet been completed, so version 2.0.1 should be
+physical cut and fit test has not yet been completed, so version 2.0.2 should be
 treated as preview-tested rather than physically validated. Aspire compatibility
 also remains unverified.
 
