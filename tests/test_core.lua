@@ -528,6 +528,8 @@ for _, row_count in ipairs({7, 8}) do
            large_plate_plan.operations[#large_plate_plan.operations].label ==
              "Finish Outside Cutout" and
            large_plate_plan.operations[1].label == "Rough Clearance" and
+           large_plate_plan.operations[1].tool == "finish" and
+           large_plate_plan.operations[1].area_clear_tool == "rough" and
            large_plate_plan.operations[1].cut_depth_mm == 4.75 and
            large_plate_plan.operations[1].layer_names[2] ==
              "Gridfinity - Bin Bottom Foot Top Edge" and
@@ -537,7 +539,7 @@ for _, row_count in ipairs({7, 8}) do
              "Gridfinity - Bin Bottom Finish Clearance Boundary" and
            large_plate_plan.operations[2].layer_names[2] ==
              "Gridfinity - Bin Bottom Foot Wall Edge",
-      "a centered 7 by 7 grid should rough around the top and bottom bands")
+      "a centered 7 by 7 grid should use both end mills to rough around the top and bottom bands")
     assert(core.add_bin_bottom_geometry(
       {LayerManager = bin_bottom_layer_manager}, large_plate_layout, 1.0,
       large_plate_options, large_plate_plan))
@@ -603,12 +605,10 @@ assert(zero_allowance_plan.use_rough_clearance and
        zero_allowance_plan.operations[2].layer_names[1] ==
          "Gridfinity - Bin Bottom Foot Wall Edge",
   "zero-allowance full roughing should finish the wall with a profile")
-assert(zero_allowance_plan.operations[3].label == "Finish Clearance" and
-       zero_allowance_plan.operations[3].kind == "profile" and
-       zero_allowance_plan.operations[3].profile_side == "outside" and
-       zero_allowance_plan.operations[3].layer_names[1] ==
-         "Gridfinity - Bin Bottom Foot Top Edge",
-  "rough-clearance follow-up should finish foot tops with outside profiles")
+for _, operation in ipairs(zero_allowance_plan.operations) do
+  assert(operation.label ~= "Finish Clearance",
+    "a two-tool Rough Clearance pocket should not need a later finish-clearance path")
+end
 local no_rough_fallback_plan = assert(core.build_bin_bottom_operation_plan(
   zero_allowance_options, very_small_rough_tools, 6.0, true))
 assert(not no_rough_fallback_plan.use_rough_clearance and

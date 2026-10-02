@@ -656,7 +656,10 @@ function Core.build_bin_bottom_operation_plan(options, tools, material_thickness
   end
   if use_rough_clearance then
     add_operation({
-      kind = "pocket", label = "Rough Clearance", tool = "rough",
+      kind = "pocket", label = "Rough Clearance", tool = "finish",
+      -- Vectric's multi-tool pocket runs the area-clearance tool first, then
+      -- the primary tool.  Keep both end mills in this first clearance pass.
+      area_clear_tool = "rough",
       layer_names = {LAYER_BIN_BOTTOM_ROUGH_CLEARANCE, LAYER_BIN_BOTTOM_TOP},
       start_depth_mm = 0.0,
       cut_depth_mm = Core.BIN_BOTTOM_TOTAL_DEPTH_MM,
@@ -691,20 +694,7 @@ function Core.build_bin_bottom_operation_plan(options, tools, material_thickness
       profile_side = "outside"
     })
   end
-  if use_rough_clearance then
-    -- The rougher has already cleared this region to final depth.  Finish the
-    -- foot-top edge with a profile so the smaller cutter can sweep the
-    -- rougher's remaining inter-foot scallops without asking VCarve to pocket
-    -- a region that has no usable area for the cutter.
-    add_operation({
-      kind = "profile", label = "Finish Clearance", tool = "finish",
-      layer_names = {LAYER_BIN_BOTTOM_TOP},
-      start_depth_mm = Core.BIN_BOTTOM_MACHINING_WALL_END_MM,
-      cut_depth_mm =
-        Core.BIN_BOTTOM_TOTAL_DEPTH_MM - Core.BIN_BOTTOM_MACHINING_WALL_END_MM,
-      profile_side = "outside"
-    })
-  else
+  if not use_rough_clearance then
     add_operation({
       kind = "pocket", label = "Finish Clearance", tool = "finish",
       layer_names = {LAYER_BIN_BOTTOM_INTERFACE_CLEARANCE, LAYER_BIN_BOTTOM_TOP},
@@ -1425,7 +1415,7 @@ end
 
 local function create_pocket_toolpath(name, tool, material, unit, layer_names,
                                       start_depth_mm, cut_depth_mm, allowance_mm,
-                                      interactive)
+                                      interactive, area_clear_tool)
   local pocket_data = PocketParameterData()
   pocket_data.StartDepth = start_depth_mm * unit
   pocket_data.CutDepth = cut_depth_mm * unit
@@ -1438,7 +1428,7 @@ local function create_pocket_toolpath(name, tool, material, unit, layer_names,
   pocket_data.ProjectToolpath = false
 
   local toolpath_id = ToolpathManager():CreatePocketingToolpath(
-    name, tool, nil, pocket_data, create_position_data(material, unit),
+    name, tool, area_clear_tool, pocket_data, create_position_data(material, unit),
     create_layer_selector(layer_names), true, interactive ~= false)
   return toolpath_id
 end
@@ -1504,7 +1494,8 @@ local function create_bin_bottom_toolpaths(plan, rough_tool, finish_tool, vbit_t
       toolpath_id = create_pocket_toolpath(
         operation.name, tools[operation.tool], material, unit,
         operation.layer_names, operation.start_depth_mm,
-        operation.cut_depth_mm, operation.allowance_mm, false)
+        operation.cut_depth_mm, operation.allowance_mm, false,
+        tools[operation.area_clear_tool])
     else
       toolpath_id = create_profile_toolpath(
         operation.name, tools[operation.tool], material, unit,
@@ -1839,43 +1830,25 @@ function main(script_path)
     return true
   end
 
+  -- A Vectric multi-tool pocket takes its finishing tool first and its optional
+  -- area-clearance tool second.  This makes the rough pocket run the rougher
+  -- first, then the finishing end mill on material the rougher could not reach.
   if not retain_baseplate_toolpath(create_pocket_toolpath(
-      "Gridfinity 1 - Rough", rough_tool, material, unit,
-      LAYER_SOCKET_INNER, 0.0, Core.TOTAL_DEPTH_MM - options.allowance_mm,
-      options.allowance_mm),
+      "Gridfinity 1 - Rough", finish_tool, material, unit,
+      LAYER_SOCKET_INNER, 0.0, Core.TOTAL_DEPTH_MM, 0.0, nil, rough_tool),
       "Could not create the Gridfinity roughing toolpath.") then
-    return false
-  end
-
-  local finish_ok
-  local baseplate_finish_is_pocket = Core.finish_uses_pocket(
-      options.allowance_mm, rough_dia_mm, finish_dia_mm,
-      Core.MACHINED_BOTTOM_RADIUS_MM)
-  if baseplate_finish_is_pocket then
-    finish_ok = create_pocket_toolpath(
-      "Gridfinity 2 - Finish", finish_tool, material, unit,
-      LAYER_SOCKET_INNER, 0.0, Core.TOTAL_DEPTH_MM, 0.0)
-  else
-    finish_ok = create_profile_toolpath(
-      "Gridfinity 2 - Finish", finish_tool, material, unit,
-      LAYER_SOCKET_INNER, Core.MID_DEPTH_MM,
-      Core.TOTAL_DEPTH_MM - Core.MID_DEPTH_MM,
-      ProfileParameterData.PROFILE_INSIDE)
-  end
-  if not retain_baseplate_toolpath(
-      finish_ok, "Could not create the Gridfinity finishing toolpath.") then
     return false
   end
 
   if options.include_magnets and not retain_baseplate_toolpath(
     create_pocket_toolpath(
-      "Gridfinity 3 - Magnet Pockets", finish_tool, material, unit,
+      "Gridfinity 2 - Magnet Pockets", finish_tool, material, unit,
       LAYER_MAGNET_INNER, Core.TOTAL_DEPTH_MM, options.magnet_depth_mm, 0.0),
       "Could not create the Gridfinity magnet-pocket toolpath.") then
     return false
   end
 
-  local chamfer_number = options.include_magnets and 4 or 3
+  local chamfer_number = options.include_magnets and 3 or 2
   if not retain_baseplate_toolpath(create_profile_toolpath(
       "Gridfinity " .. chamfer_number .. " - 45deg Socket Chamfers",
       vbit_tool, material, unit, LAYER_SOCKET_INNER, 0.0,
@@ -1886,7 +1859,7 @@ function main(script_path)
 
   if options.include_magnets and options.magnet_chamfer_mm > 0.000001 and
      not retain_baseplate_toolpath(create_profile_toolpath(
-       "Gridfinity 5 - 45deg Magnet Chamfers", vbit_tool, material, unit,
+       "Gridfinity 4 - 45deg Magnet Chamfers", vbit_tool, material, unit,
        LAYER_MAGNET_INNER, Core.TOTAL_DEPTH_MM, options.magnet_chamfer_mm,
        ProfileParameterData.PROFILE_ON),
        "Could not create the Gridfinity magnet-chamfer toolpath.") then
@@ -1897,9 +1870,7 @@ function main(script_path)
   DisplayMessageBox(
     "Created a " .. options.columns .. " x " .. options.rows .. " Gridfinity baseplate " ..
     "with editable native toolpaths.\n\n" ..
-    "Finishing strategy: " ..
-    (baseplate_finish_is_pocket and "full finishing pocket" or "wall profile") ..
-    ".\n\n" ..
+    "The first pocket contains both the roughing clear pass and finishing pass.\n\n" ..
     "Preview every toolpath and verify tool numbers, feeds, safe Z, and cut depths before machining.")
   return true
 end

@@ -2,8 +2,8 @@
 
 Creates editable native Vectric toolpaths for either of these Gridfinity parts:
 
-- **Baseplate** — negative receiving sockets machined into the material.
-- **Bin Bottom** — a removable flat cover with positive mating feet machined
+- **Baseplate** — a negative receiving sockets machined into the material.
+- **Bin Bottom** — a positive mating feet machined
   underside-up, followed by a tabbed outside cutout.
 
 The gadget is tested in VCarve Pro. It uses the shared Vectric V12 Gadget API
@@ -127,15 +127,13 @@ the end mills continue the 37.2 mm wall profile to the terminal depth.
 
 The Baseplate normally creates:
 
-1. `Gridfinity 1 - Rough` — rough pocket with the requested radial and axial
-   allowance.
-2. `Gridfinity 2 - Finish` — wall profile when zero allowance and the cutter
-   combination can clear the rougher's corner remnant; otherwise a complete
-   finishing pocket.
-3. `Gridfinity 3 - 45deg Socket Chamfers` — 2.15 mm seating chamfer.
+1. `Gridfinity 1 - Rough` — a two-tool pocket. VCarve produces a `Clear` path
+   with the roughing end mill, then a finishing path with the finishing end
+   mill; together they machine the socket to final depth and size.
+2. `Gridfinity 2 - 45deg Socket Chamfers` — 2.15 mm seating chamfer.
 
-With magnets enabled, magnet pockets become operation 3, the socket chamfer
-becomes operation 4, and a positive magnet chamfer adds operation 5. Magnet
+With magnets enabled, magnet pockets become operation 2, the socket chamfer
+becomes operation 3, and a positive magnet chamfer adds operation 4. Magnet
 pockets continue below the 4.65 mm socket floor.
 
 Baseplate geometry uses these layers:
@@ -192,10 +190,10 @@ magnet settings. Operations that apply are created in this order:
 
 | Order | Operation | Tool | Depth and behavior | When included |
 | ---: | --- | --- | --- | --- |
-| 1 | Rough Clearance | Roughing end mill | Pockets accessible space around 41.5 mm foot-top islands to 4.75 mm. Leaves the selected allowance radially. | When the rough tool plus twice the allowance fits between foot tops or in an unused full-cell band at the plate edge. |
+| 1 | Rough Clearance | Roughing + finishing end mills | A two-tool pocket: the roughing end mill clears accessible space around 41.5 mm foot-top islands to 4.75 mm, then the finishing end mill completes that same pocket. Leaves the selected allowance radially. | When the rough tool plus twice the allowance fits between foot tops or in an unused full-cell band at the plate edge. |
 | 2 | Wall Clearance | Finishing end mill | Pockets from 0 to 2.6 mm around the 37.2 mm wall contours. When Rough Clearance runs, this pocket is limited to the exact grid rectangle. After complete zero-allowance roughing, it instead profiles the walls. | Always. |
 | 3 | Vertical Walls | Finishing end mill | Outside profile from 0.8 to 2.6 mm, preserving the 1.8 mm wall. It follows Wall Clearance to finish wall edges the pocket cannot reach. | Omitted when the Wall Clearance operation already profiles the wall. |
-| 4 | Finish Clearance | Finishing end mill | When Rough Clearance runs, profiles outside the 41.5 mm foot-top contours from 2.6 to 4.75 mm to finish the rougher's remaining scallops. Otherwise, pockets the plate-interface area to the same depth. | Always. |
+| 4 | Finish Clearance | Finishing end mill | Pockets the plate-interface area from 2.6 to 4.75 mm. | Only when Rough Clearance is unavailable. |
 | 5 | Magnet Pockets | Finishing end mill | Pockets inward from the exposed foot face to the selected depth. | Magnets enabled. |
 | 6 | Lower Chamfer Passes | 90° V-bit | One or more profile-on passes spanning 0 to 0.8 mm. | Always. |
 | 7 | Upper Chamfer Passes | 90° V-bit | One or more profile-on passes spanning 2.6 to 4.75 mm. | Always. |
@@ -229,8 +227,8 @@ The finish clearance stages are checked independently of Rough Clearance. If
 the roughing cutter cannot fit between foot tops, it can still clear an unused
 full-cell band at the plate edge where the cutter fits. Wall Clearance pockets
 the narrow gaps the rougher cannot enter. When Rough Clearance runs, Wall
-Clearance uses the exact grid rectangle and Finish Clearance profiles the
-foot-top contours, so neither repeats the wide outer band. Wall, chamfer, seam, and magnet vectors are
+Clearance uses the exact grid rectangle, and its finishing tool completes that
+same multi-tool pocket, so no later Finish Clearance toolpath is needed. Wall, chamfer, seam, and magnet vectors are
 also within the grid. Outside cutouts still follow the physical plate boundary.
 
 With zero roughing allowance, Wall Clearance uses a finishing profile when the
