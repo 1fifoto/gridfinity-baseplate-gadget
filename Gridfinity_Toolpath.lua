@@ -503,8 +503,7 @@ function Core.bin_bottom_chamfer_passes(start_depth_mm, end_depth_mm,
   return passes, nil
 end
 
-function Core.build_bin_bottom_operation_plan(options, tools, material_thickness_mm,
-                                          skip_rough_clearance)
+function Core.build_bin_bottom_operation_plan(options, tools, material_thickness_mm)
   if tools.rough_diameter_mm <= 0.0 or tools.finish_diameter_mm <= 0.0 or
      tools.vbit_diameter_mm <= 0.0 then
     return nil, "All selected tools must have a positive diameter."
@@ -595,32 +594,14 @@ function Core.build_bin_bottom_operation_plan(options, tools, material_thickness
   local top_clearance_mm = math.min(
     options.cell_width_mm - top_width,
     options.cell_height_mm - top_height)
-  local layout = options.layout
-  local grid_max_x = layout.grid_min_x + layout.columns * options.cell_width_mm
-  local grid_max_y = layout.grid_min_y + layout.rows * options.cell_height_mm
-  local x_perimeter_clearance_mm = math.max(
-    layout.grid_min_x - layout.min_x + (options.cell_width_mm - top_width) * 0.5,
-    layout.max_x - grid_max_x + (options.cell_width_mm - top_width) * 0.5)
-  local y_perimeter_clearance_mm = math.max(
-    layout.grid_min_y - layout.min_y + (options.cell_height_mm - top_height) * 0.5,
-    layout.max_y - grid_max_y + (options.cell_height_mm - top_height) * 0.5)
   if tools.finish_diameter_mm > wall_clearance_mm + 0.000000001 then
     return nil, string.format(
       "The %.3f mm finishing end mill does not fit the %.3f mm clearance between Bin Bottom wall profiles. Choose a finishing end mill no larger than %.3f mm.",
       tools.finish_diameter_mm, wall_clearance_mm, wall_clearance_mm)
   end
-  local required_rough_clearance_mm =
-    tools.rough_diameter_mm + 2.0 * options.allowance_mm
-  local rough_clearance_fits =
-    required_rough_clearance_mm <= top_clearance_mm + 0.000000001 or
-    (layout.overall_x_mm - layout.columns * options.cell_width_mm >=
-       options.cell_width_mm - 0.000000001 and
-     required_rough_clearance_mm <= x_perimeter_clearance_mm + 0.000000001) or
-    (layout.overall_y_mm - layout.rows * options.cell_height_mm >=
-       options.cell_height_mm - 0.000000001 and
-     required_rough_clearance_mm <= y_perimeter_clearance_mm + 0.000000001)
-  local use_rough_clearance = rough_clearance_fits and
-    skip_rough_clearance ~= true
+  -- Let VCarve determine what the area-clearance tool can reach.  The
+  -- two-tool Rough Clearance pocket is always part of a Bin Bottom plan.
+  local use_rough_clearance = true
   local finish_wall_with_profile = use_rough_clearance and
     options.allowance_mm <= 0.000000001 and
     tools.rough_diameter_mm <= top_clearance_mm + 0.000000001
@@ -1746,24 +1727,6 @@ function main(script_path)
     end
     local paths_ok, failed_operation = create_bin_bottom_toolpaths(
       plan, rough_tool, finish_tool, vbit_tool, material, unit)
-    local rough_clearance_omitted = false
-    if not paths_ok and plan.use_rough_clearance and
-       failed_operation == plan.operations[1].name then
-      -- A fit pre-check cannot account for every VCarve constraint.  If its
-      -- actual Rough Clearance calculation fails, discard its geometry and
-      -- regenerate the no-rough plan before attempting any finishing paths.
-      plan, plan_error = Core.build_bin_bottom_operation_plan(
-        options, bin_bottom_tools, thickness_mm, true)
-      if plan ~= nil then
-        bin_bottom_ok, bin_bottom_error = add_bin_bottom_geometry(
-          job, layout, unit, options, plan)
-        if bin_bottom_ok then
-          paths_ok, failed_operation = create_bin_bottom_toolpaths(
-            plan, rough_tool, finish_tool, vbit_tool, material, unit)
-          rough_clearance_omitted = paths_ok
-        end
-      end
-    end
     if not paths_ok then
       DisplayMessageBox(
         "Could not create " .. failed_operation ..
@@ -1775,8 +1738,6 @@ function main(script_path)
       "Created a " .. options.columns .. " x " .. options.rows ..
       " Gridfinity Bin Bottom with " .. plan.expected_operations ..
       " editable native toolpaths.\n\n" ..
-      (rough_clearance_omitted and
-        "Rough Clearance could not be created and was omitted; the finishing-only plan was used.\n\n" or "") ..
       "The stock surface is the exposed foot face. Preview every toolpath and verify the recessed plate surface, both foot chamfers, internal seam cleanup when applicable, vertical walls, outside cutout, four holding tabs, tool numbers, feeds, safe Z, and cut depths before machining.")
     return true
   end

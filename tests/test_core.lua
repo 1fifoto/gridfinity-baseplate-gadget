@@ -428,26 +428,23 @@ near(bin_bottom_plan.interface_clearance_expansion_mm, 3.175, 1e-9,
   "interface clearance should provide an accessible perimeter beyond the plate")
 near(bin_bottom_plan.wall_clearance_mm, 4.8, 1e-9,
   "standard wall profiles should leave 4.8 mm clearance")
-assert(not bin_bottom_plan.use_rough_clearance,
-  "a quarter-inch rougher plus allowance should not fit the wall clearance")
-assert(bin_bottom_plan.expected_operations == 8,
-  "a multi-cell Bin Bottom should include seam and outside-cutout operations")
-assert(bin_bottom_plan.operations[1].layer_names[1] ==
+assert(bin_bottom_plan.use_rough_clearance,
+  "Rough Clearance should be created without a cutter-fit pre-check")
+assert(bin_bottom_plan.expected_operations == 9,
+  "a multi-cell Bin Bottom should include Rough Clearance, seam, and outside-cutout operations")
+assert(bin_bottom_plan.operations[1].label == "Rough Clearance" and
+       bin_bottom_plan.operations[1].tool == "finish" and
+       bin_bottom_plan.operations[1].area_clear_tool == "rough",
+  "Rough Clearance should use both end mills")
+assert(bin_bottom_plan.operations[2].layer_names[1] ==
        "Gridfinity - Bin Bottom Finish Clearance Boundary" and
-       bin_bottom_plan.operations[1].layer_names[2] ==
+       bin_bottom_plan.operations[2].layer_names[2] ==
        "Gridfinity - Bin Bottom Foot Wall Edge" and
-       bin_bottom_plan.operations[1].cut_depth_mm == 2.6,
-  "finishing clearance should use wall islands and stop at wall depth")
-assert(bin_bottom_plan.operations[3].layer_names[1] ==
-       "Gridfinity - Bin Bottom Interface Clearance Boundary" and
-       bin_bottom_plan.operations[3].layer_names[2] ==
-       "Gridfinity - Bin Bottom Foot Top Edge" and
-       bin_bottom_plan.operations[3].start_depth_mm == 2.6 and
-       bin_bottom_plan.operations[3].cut_depth_mm == 2.15,
-  "plate-interface clearance should protect foot tops and finish at 4.75 mm")
-assert(bin_bottom_plan.operations[2].profile_side == "outside" and
-       bin_bottom_plan.operations[2].start_depth_mm == 0.8 and
-       bin_bottom_plan.operations[2].cut_depth_mm == 1.8,
+       bin_bottom_plan.operations[2].cut_depth_mm == 2.6,
+  "wall clearance should use wall islands and stop at wall depth")
+assert(bin_bottom_plan.operations[3].profile_side == "outside" and
+       bin_bottom_plan.operations[3].start_depth_mm == 0.8 and
+       bin_bottom_plan.operations[3].cut_depth_mm == 1.8,
   "wall finishing should run outside the wall from 0.8 through 2.6 mm")
 assert(bin_bottom_plan.operations[7].label == "Upper Chamfer Seam Pass" and
        bin_bottom_plan.operations[7].layer_names[1] ==
@@ -460,7 +457,7 @@ assert(bin_bottom_plan.operations[8].label == "Rough Outside Cutout" and
        bin_bottom_plan.operations[8].tool == "rough" and
        bin_bottom_plan.operations[8].profile_side == "outside" and
        bin_bottom_plan.operations[8].cut_depth_mm == 6.0 and
-       bin_bottom_plan.operations[8].allowance_mm == 0.0 and
+       bin_bottom_plan.operations[8].allowance_mm == 0.2 and
        bin_bottom_plan.operations[8].use_tabs,
   "the rough tool should cut the boundary through stock with tabs")
 assert(core.add_bin_bottom_geometry(
@@ -476,21 +473,20 @@ assert(bin_bottom_layers["Gridfinity - Bin Bottom Upper Chamfer Seam Pass"].obje
   "the upper-chamfer seam layer should contain every internal grid centerline")
 assert(inserted_tab_count == 4,
   "the Bin Bottom boundary should receive one tab on each side")
-assert(bin_bottom_layers["Gridfinity - Bin Bottom Rough Clearance Boundary"] == nil and
+assert(bin_bottom_layers["Gridfinity - Bin Bottom Rough Clearance Boundary"].object_count == 1 and
        bin_bottom_layers["Gridfinity - Bin Bottom Finish Clearance Boundary"].object_count == 1 and
        bin_bottom_layers["Gridfinity - Bin Bottom Interface Clearance Boundary"].object_count == 1,
-  "both finishing stages should have expanded clearance boundaries")
-local no_rough_interface_boundary = bin_bottom_layers[
+  "the Rough Clearance and wall-clearance paths should have their boundaries")
+local rough_interface_boundary = bin_bottom_layers[
   "Gridfinity - Bin Bottom Interface Clearance Boundary"].last_object.points
-near(no_rough_interface_boundary[1].x,
-  layout.min_x - bin_bottom_plan.interface_clearance_expansion_mm, 1e-9,
-  "without roughing, interface clearance should still cover the plate edge")
+near(rough_interface_boundary[1].x, layout.grid_min_x, 1e-9,
+  "with Rough Clearance, the unused interface boundary should follow the grid edge")
 local magnet_plan_options = {}
 for key, value in pairs(bin_bottom_plan_options) do magnet_plan_options[key] = value end
 magnet_plan_options.include_magnets = true
 local magnet_plan = assert(core.build_bin_bottom_operation_plan(
   magnet_plan_options, bin_bottom_tools, 6.0))
-assert(magnet_plan.expected_operations == 10,
+assert(magnet_plan.expected_operations == 11,
   "magnets should add pocket and chamfer operations to the Bin Bottom plan")
 
 local margin_plan_options = {}
@@ -498,14 +494,9 @@ for key, value in pairs(bin_bottom_plan_options) do margin_plan_options[key] = v
 margin_plan_options.layout = margin_magnet_layout
 local margin_plan = assert(core.build_bin_bottom_operation_plan(
   margin_plan_options, bin_bottom_tools, 6.0))
-assert(margin_plan.expected_operations == 8 and
-       margin_plan.operations[1].kind == "pocket",
-  "ordinary edge margins should retain finishing clearance only")
-assert(margin_plan.operations[1].layer_names[1] ==
-       "Gridfinity - Bin Bottom Finish Clearance Boundary" and
-       margin_plan.operations[1].layer_names[2] ==
-       "Gridfinity - Bin Bottom Foot Wall Edge",
-  "finishing clearance should use expanded boundaries with wall contours as islands")
+assert(margin_plan.use_rough_clearance and
+       margin_plan.operations[1].label == "Rough Clearance",
+  "ordinary edge margins should still create Rough Clearance")
 
 for _, row_count in ipairs({7, 8}) do
   local large_plate_layout = assert(core.create_layout(layout_options({
@@ -543,7 +534,7 @@ for _, row_count in ipairs({7, 8}) do
     assert(core.add_bin_bottom_geometry(
       {LayerManager = bin_bottom_layer_manager}, large_plate_layout, 1.0,
       large_plate_options, large_plate_plan))
-    assert(bin_bottom_layers["Gridfinity - Bin Bottom Rough Clearance Boundary"].object_count == 1,
+    assert(bin_bottom_layers["Gridfinity - Bin Bottom Rough Clearance Boundary"].object_count >= 1,
       "the centered 7 by 7 plate should generate a rough clearance boundary")
     for _, layer_name in ipairs({
       "Gridfinity - Bin Bottom Finish Clearance Boundary",
@@ -568,9 +559,9 @@ for _, row_count in ipairs({7, 8}) do
     near(cutout_boundary[3].y, large_plate_layout.max_y, 1e-9,
       "cutout should retain the physical plate boundary")
   else
-    assert(not large_plate_plan.use_rough_clearance and
-           large_plate_plan.operations[1].label == "Wall Clearance",
-      "a centered 7 by 8 grid should use Wall Clearance only")
+    assert(large_plate_plan.use_rough_clearance and
+           large_plate_plan.operations[1].label == "Rough Clearance",
+      "a centered 7 by 8 grid should create Rough Clearance")
   end
 end
 
@@ -579,9 +570,8 @@ for key, value in pairs(bin_bottom_tools) do small_rough_tools[key] = value end
 small_rough_tools.rough_diameter_mm = 3.0
 local small_rough_plan = assert(core.build_bin_bottom_operation_plan(
   bin_bottom_plan_options, small_rough_tools, 6.0))
-assert(not small_rough_plan.use_rough_clearance and
-       small_rough_plan.expected_operations == 8,
-  "a 3 mm rougher should not fit the 0.5 mm gap between foot tops")
+assert(small_rough_plan.use_rough_clearance,
+  "a 3 mm rougher should still create Rough Clearance")
 
 local zero_allowance_options = {}
 for key, value in pairs(bin_bottom_plan_options) do zero_allowance_options[key] = value end
@@ -609,16 +599,6 @@ for _, operation in ipairs(zero_allowance_plan.operations) do
   assert(operation.label ~= "Finish Clearance",
     "a two-tool Rough Clearance pocket should not need a later finish-clearance path")
 end
-local no_rough_fallback_plan = assert(core.build_bin_bottom_operation_plan(
-  zero_allowance_options, very_small_rough_tools, 6.0, true))
-assert(not no_rough_fallback_plan.use_rough_clearance and
-       no_rough_fallback_plan.operations[1].label == "Wall Clearance" and
-       no_rough_fallback_plan.operations[1].kind == "pocket" and
-       no_rough_fallback_plan.operations[2].label == "Vertical Walls" and
-       no_rough_fallback_plan.operations[2].kind == "profile" and
-       no_rough_fallback_plan.operations[3].label == "Finish Clearance" and
-       no_rough_fallback_plan.operations[3].kind == "pocket",
-  "a rejected rough-clearance path should fall back to finishing pockets")
 for _, operation in ipairs(zero_allowance_plan.operations) do
   assert(operation.label ~= "Vertical Walls",
     "wall finishing profile should replace the overlapping vertical-wall profile")
@@ -626,8 +606,8 @@ end
 assert(core.add_bin_bottom_geometry(
   {LayerManager = bin_bottom_layer_manager}, layout, 1.0,
   zero_allowance_options, zero_allowance_plan))
-assert(bin_bottom_layers["Gridfinity - Bin Bottom Rough Clearance Boundary"].object_count == 2,
-  "a rougher that fits between foot tops should generate a rough boundary")
+assert(bin_bottom_layers["Gridfinity - Bin Bottom Rough Clearance Boundary"].object_count >= 1,
+  "Rough Clearance should generate a rough boundary")
 
 local insufficient_clearance_options = {}
 for key, value in pairs(zero_allowance_options) do
@@ -636,8 +616,8 @@ end
 insufficient_clearance_options.allowance_mm = 0.1
 local insufficient_clearance_plan = assert(core.build_bin_bottom_operation_plan(
   insufficient_clearance_options, very_small_rough_tools, 6.0))
-assert(not insufficient_clearance_plan.use_rough_clearance,
-  "roughing diameter plus twice allowance must fit the top-to-top gap")
+assert(insufficient_clearance_plan.use_rough_clearance,
+  "Rough Clearance should not be suppressed by a cutter-fit check")
 
 local wide_margin_options = {}
 for key, value in pairs(zero_allowance_options) do wide_margin_options[key] = value end
@@ -697,8 +677,8 @@ single_cell_plan_options.layout = assert(core.create_layout(
 local single_cell_plan = assert(core.build_bin_bottom_operation_plan(
   single_cell_plan_options, bin_bottom_tools, 5.15))
 assert(single_cell_plan.seam_count == 0 and
-       single_cell_plan.expected_operations == 7,
-  "a one-cell plate should omit the seam but retain its outside cutout")
+       single_cell_plan.expected_operations == 8,
+  "a one-cell plate should omit the seam but retain Rough Clearance and its outside cutout")
 near(single_cell_plan.minimum_thickness_mm, 5.15, 1e-9,
   "a one-cell plate should retain the original minimum stock thickness")
 

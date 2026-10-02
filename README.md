@@ -190,7 +190,7 @@ magnet settings. Operations that apply are created in this order:
 
 | Order | Operation | Tool | Depth and behavior | When included |
 | ---: | --- | --- | --- | --- |
-| 1 | Rough Clearance | Roughing + finishing end mills | A two-tool pocket: the roughing end mill clears accessible space around 41.5 mm foot-top islands to 4.75 mm, then the finishing end mill completes that same pocket. Leaves the selected allowance radially. | When the rough tool plus twice the allowance fits between foot tops or in an unused full-cell band at the plate edge. |
+| 1 | Rough Clearance | Roughing + finishing end mills | A two-tool pocket: the roughing end mill clears accessible space around 41.5 mm foot-top islands to 4.75 mm, then the finishing end mill completes that same pocket. Leaves the selected allowance radially. | Always. |
 | 2 | Wall Clearance | Finishing end mill | Pockets from 0 to 2.6 mm around the 37.2 mm wall contours. When Rough Clearance runs, this pocket is limited to the exact grid rectangle. After complete zero-allowance roughing, it instead profiles the walls. | Always. |
 | 3 | Vertical Walls | Finishing end mill | Outside profile from 0.8 to 2.6 mm, preserving the 1.8 mm wall. It follows Wall Clearance to finish wall edges the pocket cannot reach. | Omitted when the Wall Clearance operation already profiles the wall. |
 | 4 | Finish Clearance | Finishing end mill | Pockets the plate-interface area from 2.6 to 4.75 mm. | Only when Rough Clearance is unavailable. |
@@ -223,13 +223,12 @@ add Rough Clearance or Finish Outside Cutout on an exact 2 × 2 grid.
 
 ### Clearance behavior and cutter fit
 
-The finish clearance stages are checked independently of Rough Clearance. If
-the roughing cutter cannot fit between foot tops, it can still clear an unused
-full-cell band at the plate edge where the cutter fits. Wall Clearance pockets
-the narrow gaps the rougher cannot enter. When Rough Clearance runs, Wall
-Clearance uses the exact grid rectangle, and its finishing tool completes that
-same multi-tool pocket, so no later Finish Clearance toolpath is needed. Wall, chamfer, seam, and magnet vectors are
-also within the grid. Outside cutouts still follow the physical plate boundary.
+Rough Clearance is always created as a two-tool pocket. VCarve determines
+which areas its roughing area-clearance tool can reach; the finishing tool then
+completes the same pocket. Wall Clearance pockets the narrow gaps the rougher
+cannot enter, and no later Finish Clearance toolpath is needed. Wall, chamfer,
+seam, and magnet vectors are also within the grid. Outside cutouts still follow
+the physical plate boundary.
 
 With zero roughing allowance, Wall Clearance uses a finishing profile when the
 roughing cutter fits all internal foot-top gaps. This avoids repeating the full
@@ -237,23 +236,9 @@ pocket while still finishing the wall contour. The separate Vertical Walls
 profile is omitted when Wall Clearance already profiles the same walls.
 
 For standard 42 mm cells, the 41.5 mm foot tops leave 0.5 mm between adjacent
-top profiles. Rough Clearance is included when either condition holds:
-
-```text
-roughing-tool diameter + 2 × roughing allowance ≤ top-to-top clearance
-
-or
-
-unused plate width or height ≥ one cell width or height, respectively
-and roughing-tool diameter + 2 × roughing allowance
-  ≤ the corresponding foot-top-to-plate-edge clearance
-```
-
-Consequently, a 6.35 mm (1/4-inch) rougher can run Rough Clearance on a
-307 × 354 mm plate with a centered 7 × 7 grid: the unused 60 mm height is
-split into 30 mm bands above and below the feet. It skips Rough Clearance
-with a 7 × 8 grid, which has no full-cell band. A 3.175 mm (1/8-inch)
-finishing end mill clears the internal wall gaps in both layouts.
+top profiles. The 3.175 mm (1/8-inch) finishing end mill clears the internal
+wall gaps; VCarve simply leaves inaccessible areas untouched during the
+rougher's area-clearance pass.
 
 The finishing end mill must fit the wall spacing. Tool-specific expanded outer
 boundaries let clearance cutters reach or pass the true plate edge; the plate
